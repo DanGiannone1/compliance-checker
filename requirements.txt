@@ -1,0 +1,8 @@
+azure-ai-inference
+python-dotenv
+azure-core
+tiktoken
+fastapi
+uvicorn
+pydantic
+python-multipart

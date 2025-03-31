@@ -1,0 +1,305 @@
+# STATEMENT OF WORK
+
+**Agreement #:** MSA-2025-0421  
+**SOW #:** SOW-2025-0087  
+**Date:** March 31, 2025
+
+## 1. Introduction
+
+This Statement of Work ("SOW") is entered into between TechNova Solutions, Inc. ("Service Provider") and Meridian Healthcare Systems ("Client") pursuant to the Master Services Agreement dated January 15, 2025 ("Agreement"). This SOW describes the professional services to be provided by Service Provider to Client.
+
+### 1.1 Project Overview
+
+This project involves the implementation and integration of a new Electronic Health Records (EHR) system to replace the Client's legacy system. The implementation will include data migration from the existing platform, customization of the new EHR system to meet Client's specific workflows, integration with third-party applications, comprehensive user training, and post-implementation support. This project is critical for improving operational efficiency, enhancing patient care coordination, and ensuring compliance with current healthcare regulations.
+
+### 1.2 Project Stakeholders
+
+| Role | Name | Organization | Contact Information |
+|------|------|--------------|---------------------|
+| Project Sponsor | Dr. Sarah Richards | Meridian Healthcare | s.richards@meridianhc.com / (415) 555-8762 |
+| Project Manager | Michael Chen | TechNova Solutions | m.chen@technova.com / (628) 555-3291 |
+| Technical Lead | Priya Sharma | TechNova Solutions | p.sharma@technova.com / (628) 555-4087 |
+| Clinical Systems Director | Dr. James Wilson | Meridian Healthcare | j.wilson@meridianhc.com / (415) 555-9043 |
+| Information Security Officer | Thomas Garcia | Meridian Healthcare | t.garcia@meridianhc.com / (415) 555-7156 |
+
+## 2. Scope of Services
+
+### 2.1 Project Objectives
+
+The specific objectives of this project are:
+
+1. Implement a fully functional EHR system across all five of Client's hospital facilities within a 9-month timeline
+2. Migrate 100% of patient records from the legacy system with complete data integrity and validation
+3. Reduce clinical documentation time by at least 25% through optimized workflows and templates
+4. Achieve 95% or higher user satisfaction rating following implementation and training
+5. Ensure full compliance with HIPAA, HL7 FHIR standards, and other relevant healthcare regulations
+
+### 2.2 In-Scope Services
+
+Service Provider will perform the following services:
+
+1. **System Analysis & Design**: Conduct a comprehensive analysis of Client's existing workflows, data structures, and integration requirements; create detailed system design specifications for the new EHR implementation
+2. **EHR System Implementation**: Install and configure the NextGen Healthcare EHR platform across all five hospital locations, including customization of templates, forms, and workflows based on Client specifications
+3. **Data Migration**: Extract, transform, and load patient data from the legacy MediSoft system to the new NextGen EHR platform, including complete validation and reconciliation procedures to ensure data integrity
+4. **System Integration**: Develop and implement interfaces between the EHR system and Client's existing applications including laboratory systems, medical imaging systems, billing systems, and patient portal
+5. **User Training**: Develop training materials and conduct comprehensive training sessions for all user groups (physicians, nurses, administrative staff) with role-specific curriculum
+6. **Go-Live Support**: Provide on-site support during the phased go-live implementation at each facility, including 24/7 technical assistance for the first two weeks post-implementation
+7. **Post-Implementation Support**: Deliver three months of post-implementation support including system optimization, issue resolution, and additional training as needed
+
+### 2.3 Out-of-Scope Services
+
+For clarity, the following items are explicitly excluded from this SOW:
+
+1. Hardware procurement or infrastructure upgrades (Client responsibility)
+2. Network infrastructure modifications or upgrades beyond those specifically identified in system requirements
+3. Development of new custom applications outside the EHR system's standard customization capabilities
+4. Training for applications not directly related to the NextGen EHR system
+5. Data migration from paper records or systems other than the specified legacy MediSoft system
+
+Any services not expressly included in Section 2.2 are considered out of scope. Requests for additional services will be handled through the Change Control Process described in Section 5.
+
+## 3. Deliverables & Acceptance Criteria
+
+### 3.1 Deliverables
+
+| ID | Deliverable | Description | Format | Due Date |
+|----|-------------|-------------|--------|----------|
+| D1 | System Requirements Documentation | Detailed analysis of current workflows and requirements specifications for the new system | PDF Report | May 15, 2025 |
+| D2 | System Design Document | Technical design specifications including data models, interface designs, and customization plans | PDF Report + Visio Diagrams | June 30, 2025 |
+| D3 | Data Migration Plan | Comprehensive strategy for extracting, transforming, and loading data from legacy systems | PDF Report | July 15, 2025 |
+| D4 | Testing Strategy & Test Cases | Documentation of test approach, test cases for all system functionality | Excel Spreadsheet | August 15, 2025 |
+| D5 | Training Materials | User manuals, quick reference guides, and training presentations for all user roles | PDF Guides + PowerPoint | October 1, 2025 |
+| D6 | Implemented EHR System | Fully configured and operational EHR system across all facilities | Functional System | December 15, 2025 |
+| D7 | Post-Implementation Report | Analysis of implementation outcomes, issue resolution, and recommendations for optimization | PDF Report | January 31, 2026 |
+
+### 3.2 Acceptance Criteria
+
+Each deliverable will be subject to the following acceptance process:
+
+1. Service Provider will submit each deliverable to Client's Project Manager.
+2. Client will review the deliverable within 10 business days and provide written notification of acceptance or rejection with detailed explanation.
+3. If rejected, Service Provider will have 5 business days to correct the issues and resubmit.
+4. If no feedback is received within 10 business days, the deliverable will be deemed accepted.
+
+Specific acceptance criteria for each deliverable:
+
+| Deliverable | Acceptance Criteria |
+|-------------|---------------------|
+| System Requirements Documentation | • Documentation captures all critical workflows across all departments<br>• All regulatory requirements are clearly identified<br>• All stakeholders have reviewed and provided sign-off |
+| System Design Document | • Design addresses all requirements identified in requirements phase<br>• Architecture meets performance and security specifications<br>• Integration points with all third-party systems are clearly defined |
+| Data Migration Plan | • Complete mapping of all data elements from source to target system<br>• Clear validation procedures for data integrity<br>• Rollback strategy defined in case of migration failure |
+| Implemented EHR System | • System performs all required functions as specified in requirements<br>• System meets performance benchmarks (response time < 3 seconds for 95% of transactions)<br>• Integration with all identified systems is functional<br>• System passes all security and compliance tests |
+| Training Materials | • Materials cover all system functions relevant to each user role<br>• Content is accurate and reflects the implemented system<br>• Materials include practical exercises for skill reinforcement |
+
+## 4. Project Timeline & Milestones
+
+### 4.1 Project Schedule
+
+The project is expected to begin on April 15, 2025, and end on January 31, 2026, for a total duration of 9.5 months.
+
+### 4.2 Key Milestones
+
+| Milestone | Description | Target Date |
+|-----------|-------------|-------------|
+| Project Kickoff | Initial meeting with stakeholders to align on project objectives and approach | April 15, 2025 |
+| Requirements Approval | Completion and client approval of system requirements documentation | May 20, 2025 |
+| System Design Approval | Completion and client approval of system design | July 10, 2025 |
+| Development Complete | Completion of all system configuration and customization | September 30, 2025 |
+| User Acceptance Testing | Completion of UAT by client representatives | November 15, 2025 |
+| Training Complete | Completion of all user training sessions | November 30, 2025 |
+| Phase 1 Go-Live | Implementation at first hospital location (Main Campus) | December 1, 2025 |
+| Phase 2 Go-Live | Implementation at remaining four hospital locations | December 15, 2025 |
+| Post-Implementation Review | Final assessment and project closure | January 31, 2026 |
+
+### 4.3 Dependencies
+
+The following dependencies have been identified:
+
+1. Timely provision of access to legacy systems and data structures by Client (required by May 1, 2025)
+2. Completion of network infrastructure upgrades by Client IT team (required by August 15, 2025)
+3. Availability of key stakeholders for requirements validation workshops (minimum 75% attendance required)
+4. Timely completion of User Acceptance Testing by designated Client staff (minimum 90% test cases executed)
+5. Hardware deployment at all facilities completed by Client IT team prior to go-live dates
+
+## 5. Project Management
+
+### 5.1 Project Approach & Methodology
+
+This project will utilize a hybrid methodology combining elements of Waterfall and Agile approaches. The overall project structure will follow a traditional Waterfall model with defined phases (Requirements, Design, Development, Testing, Training, Implementation), while the system configuration and customization work will employ an Agile approach with two-week sprints to allow for iterative feedback and adaptation.
+
+Key processes include:
+- Weekly sprint planning and review sessions during the development phase
+- Formal stage gate reviews at the conclusion of each major project phase
+- Structured risk and issue management with weekly assessment and mitigation planning
+- Comprehensive change management process to address scope modifications
+- Regular quality assurance reviews throughout the project lifecycle
+
+### 5.2 Communications Plan
+
+| Communication Type | Frequency | Format | Participants | Owner |
+|-------------------|-----------|--------|--------------|-------|
+| Status Reports | Weekly | Written report via email | All project stakeholders | TechNova Project Manager |
+| Project Team Status Meetings | Weekly | Virtual (Teams) | Core project team members | TechNova Project Manager |
+| Executive Steering Committee | Monthly | In-person/Virtual | Executive sponsors, Project Managers, Key stakeholders | Client Project Sponsor |
+| Technical Working Groups | Bi-weekly | Virtual (Teams) | Technical team members, Subject matter experts | TechNova Technical Lead |
+| End-user Updates | Monthly | Email newsletter | All end users | Client Change Manager |
+| Risk Review Meetings | Bi-weekly | Virtual (Teams) | Project Managers, Technical Leads, Key stakeholders | TechNova Project Manager |
+| Go-Live Readiness Reviews | Three prior to each go-live | In-person | All stakeholders | TechNova Project Manager |
+
+### 5.3 Change Control Process
+
+All changes to this SOW must follow this process:
+
+1. Change request submitted in writing using the Change Request Form.
+2. Impact analysis performed by Service Provider within 5 business days.
+3. Change request reviewed at the next scheduled Project Status Meeting or within 10 business days.
+4. If change impacts schedule by more than 10 days or budget by more than $10,000, Executive Steering Committee approval is required.
+5. Approved changes formalized through a written amendment to this SOW.
+6. All approved changes will be tracked in the project's Change Log maintained by the TechNova Project Manager.
+
+## 6. Roles & Responsibilities
+
+### 6.1 Service Provider Responsibilities
+
+1. Provide overall project management and coordination of all implementation activities
+2. Deliver all services and deliverables as outlined in this SOW according to the agreed timeline
+3. Maintain detailed project documentation including requirements, design specifications, test plans, and status reports
+4. Identify, document, and escalate risks and issues that may impact project success
+5. Ensure adequate skilled resources are available to complete the project
+6. Provide knowledge transfer to Client's technical support staff
+7. Ensure all deliverables meet the specified acceptance criteria
+8. Conduct regular status meetings and provide timely project updates
+9. Manage the change control process for all project modifications
+
+### 6.2 Client Responsibilities
+
+1. Provide timely access to systems, information, and resources necessary for project execution
+2. Assign a dedicated Project Manager to serve as the primary point of contact
+3. Ensure availability of subject matter experts for requirements gathering, design validation, and testing
+4. Complete assigned tasks and reviews within the agreed-upon timeframes
+5. Provide timely feedback and decisions to avoid project delays
+6. Manage organizational change management activities including internal communications
+7. Complete required infrastructure upgrades according to the project schedule
+8. Ensure end users are available for scheduled training sessions
+9. Provide timely review and approval of deliverables
+10. Participate in testing activities including user acceptance testing
+
+### 6.3 Resources
+
+| Role | Quantity | Organization | Availability | Responsibilities |
+|------|----------|--------------|--------------|------------------|
+| Project Manager | 1 | TechNova | Full-time | Overall project management, client communications, status reporting |
+| Technical Lead | 1 | TechNova | Full-time | System architecture, technical oversight, integration design |
+| EHR Specialists | 3 | TechNova | Full-time | System configuration, workflow design, template development |
+| Integration Developers | 2 | TechNova | Full-time | Interface development, data mapping, API configuration |
+| Data Migration Specialist | 2 | TechNova | Full-time | Data extraction, transformation, and loading |
+| Training Specialists | 2 | TechNova | As needed | Training material development, end-user training delivery |
+| Go-Live Support Staff | 6 | TechNova | During go-live phases | On-site support, issue resolution, user assistance |
+| Project Sponsor | 1 | Meridian | Part-time (10%) | Executive oversight, major approvals, stakeholder management |
+| Client Project Manager | 1 | Meridian | Full-time | Internal coordination, client-side task management |
+| Clinical SMEs | 5 | Meridian | Part-time (25%) | Requirements definition, workflow validation, testing |
+| IT Support Staff | 3 | Meridian | Part-time (50%) | Infrastructure preparation, technical support, security |
+
+## 7. Pricing & Payment Terms
+
+### 7.1 Fee Structure
+
+This SOW will be executed on a Fixed Price basis with milestone-based payments.
+
+### 7.2 Total Fees
+
+The total fee for services described in this SOW is USD $1,475,000.
+
+| Component | Description | Amount |
+|-----------|-------------|--------|
+| Professional Services | Implementation labor for all project phases | $975,000 |
+| Software Customization | Development of custom templates and workflows | $225,000 |
+| Integration Services | Development of interfaces with third-party systems | $185,000 |
+| Training Services | Development of materials and delivery of training | $90,000 |
+| **Total** | | **$1,475,000** |
+
+### 7.3 Payment Schedule
+
+| Payment | Milestone/Date | Amount | Invoice Date |
+|---------|---------------|--------|--------------|
+| Initial Payment | SOW Signature | $295,000 (20%) | April 1, 2025 |
+| Payment 2 | Requirements Approval | $221,250 (15%) | May 20, 2025 |
+| Payment 3 | System Design Approval | $221,250 (15%) | July 10, 2025 |
+| Payment 4 | Development Complete | $295,000 (20%) | September 30, 2025 |
+| Payment 5 | Training Complete | $147,500 (10%) | November 30, 2025 |
+| Payment 6 | Go-Live at All Locations | $221,250 (15%) | December 15, 2025 |
+| Final Payment | Project Completion | $73,750 (5%) | January 31, 2026 |
+
+### 7.4 Expenses
+
+Travel and lodging expenses are not included in the fixed fee and will be billed separately on a monthly basis. All expenses will adhere to the following guidelines:
+
+1. All travel expenses must comply with Client's travel policy or Service Provider's travel policy, whichever is more restrictive.
+2. Estimated travel expenses for the project are $125,000, including airfare, hotel, ground transportation, and per diem for meals.
+3. All expenses exceeding $2,500 per month require prior written approval from Client's Project Manager.
+4. Expense reports with supporting receipts will be submitted monthly with detailed itemization.
+5. Expenses will be invoiced at actual cost without markup.
+6. Payment terms for expenses are net 30 days from invoice date.
+
+## 8. Terms & Conditions
+
+### 8.1 Governing Agreement
+
+This SOW is governed by the terms and conditions of the Master Services Agreement referenced above (MSA-2025-0421 dated January 15, 2025).
+
+### 8.2 Confidentiality
+
+All information exchanged during this project is subject to the confidentiality provisions in the Master Services Agreement. Additionally, given the sensitive nature of healthcare data, the following project-specific provisions apply:
+
+1. All Service Provider personnel will complete Client's HIPAA compliance training prior to accessing any systems containing patient data
+2. No patient data will be used in any testing or training environments without proper de-identification
+3. Service Provider will maintain a log of all personnel with access to Client systems and data
+
+### 8.3 Intellectual Property
+
+The following intellectual property terms apply to this project:
+
+1. Client will retain ownership of all Client Data, including any data migrated to the new system
+2. All custom configurations, templates, and workflows developed specifically for Client will be owned by Client
+3. Service Provider retains ownership of all pre-existing tools, methodologies, and components used in the implementation
+4. Service Provider grants Client a perpetual, non-exclusive license to use any Service Provider-owned components that are included in the final implemented system
+
+### 8.4 Termination
+
+Either party may terminate this SOW in accordance with the termination provisions in the Master Services Agreement. Additionally:
+
+1. If Client terminates for convenience, Client shall pay for all services performed through the termination date plus 20% of the remaining contract value
+2. If Client terminates due to Service Provider's material breach, Client shall pay only for accepted deliverables
+3. Client may suspend the project for up to 60 days with 15 days' written notice; any suspension exceeding 60 days will require mutual agreement on revised timeline and potential cost adjustments
+
+### 8.5 Service Level Agreement
+
+Service Provider warrants that during the implementation period:
+1. Critical issues will be addressed within 4 hours of notification
+2. High-priority issues will be addressed within 8 business hours
+3. Medium-priority issues will be addressed within 2 business days
+4. Low-priority issues will be addressed within 5 business days
+
+## 9. Approvals
+
+IN WITNESS WHEREOF, the parties have executed this Statement of Work as of the date first written above.
+
+**Meridian Healthcare Systems**
+
+Signature: _________________________
+
+Name: **Dr. Sarah Richards**
+
+Title: **Chief Medical Information Officer**
+
+Date: _____________________________
+
+**TechNova Solutions, Inc.**
+
+Signature: _________________________
+
+Name: **Jennifer Li**
+
+Title: **VP of Professional Services**
+
+Date: _____________________________

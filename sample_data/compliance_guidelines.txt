@@ -1,0 +1,255 @@
+# TechNova Solutions, Inc.
+# Corporate Compliance Guidelines for Statements of Work
+
+**Document ID:** COMP-POL-2025-003  
+**Version:** 3.2  
+**Effective Date:** January 1, 2025  
+**Last Revised:** December 15, 2024  
+**Owner:** Legal & Compliance Department
+
+## 1. Introduction
+
+This document outlines the mandatory compliance requirements that must be included and verified in all Statements of Work (SOWs) issued by TechNova Solutions, Inc. These guidelines are designed to ensure that all client engagements meet our legal, ethical, and risk management standards while protecting both the company and our clients.
+
+## 2. SOW Review Process
+
+### 2.1 Required Approvals
+
+All SOWs must receive the following approvals before being presented to clients:
+
+1. **Project Manager or Delivery Lead**: Initial approval for technical accuracy and delivery feasibility
+2. **Practice Director**: Approval for resource allocation and technical approach
+3. **Legal & Compliance**: Review for contractual risks and compliance requirements
+4. **Finance**: Review of payment terms and financial risk assessment
+5. **VP of Professional Services or Designee**: Final executive approval
+
+SOWs with any of the following characteristics require additional review by the Risk Management Committee:
+- Total value exceeding $1,000,000
+- Timeline greater than 6 months
+- International clients
+- Government clients
+- Healthcare clients with access to Protected Health Information (PHI)
+- Financial services clients with access to personally identifiable financial information
+
+### 2.2 Documentation Requirements
+
+The following documentation must be maintained for each SOW:
+- Completed SOW Review Checklist (Form COMP-SOW-001)
+- All approval signatures (digital or physical)
+- Documentation of any exceptions granted
+- Final client-executed copy
+- Change requests and amendments
+
+## 3. Mandatory SOW Components
+
+Every SOW must include the following components. Missing or incomplete sections must be remediated prior to approval.
+
+### 3.1 Contract Reference
+
+- Clear reference to a fully executed Master Services Agreement (MSA)
+- SOW number using the standard format: SOW-YYYY-NNNN
+- Effective date and term of the SOW
+
+### 3.2 Scope Definition
+
+- Clearly defined project objectives
+- Detailed description of all in-scope services
+- Explicit listing of out-of-scope items
+- Specific acceptance criteria for all deliverables
+- Change control process
+
+### 3.3 Project Management
+
+- Defined project methodology
+- Communication plan including meeting cadence
+- Escalation procedures
+- Status reporting requirements
+- Risk management approach
+
+### 3.4 Deliverables
+
+- Comprehensive list of all deliverables
+- Format specifications for each deliverable
+- Due dates for each deliverable
+- Objective acceptance criteria
+- Review and approval process with timeframes
+
+### 3.5 Resource Provisions
+
+- Named key personnel (at minimum: Project Manager and Technical Lead)
+- Roles and responsibilities matrix for both TechNova and client personnel
+- Resource allocation commitments
+- Knowledge transfer requirements
+
+### 3.6 Financial Terms
+
+- Clear fee structure (Fixed Price, Time & Materials, or Hybrid)
+- Payment schedule tied to specific milestones or timeframes
+- Invoice timing and payment terms
+- Expense policy and reimbursement procedures
+- Termination payment obligations
+
+### 3.7 Legal and Compliance Provisions
+
+- Confidentiality requirements
+- Intellectual property rights
+- Data protection and security requirements
+- Regulatory compliance commitments
+- Service level agreements (if applicable)
+- Limitation of liability
+- Termination conditions
+- Dispute resolution process
+
+## 4. Industry-Specific Requirements
+
+### 4.1 Healthcare Projects
+
+All SOWs for healthcare clients must include:
+- HIPAA compliance language
+- Business Associate Agreement (BAA) reference
+- PHI handling procedures
+- Security controls aligned with HIPAA Security Rule
+- Breach notification procedures
+- Staff certification requirements
+- Data retention and destruction procedures
+
+### 4.2 Financial Services Projects
+
+All SOWs for financial services clients must include:
+- Compliance with applicable regulations (e.g., GLBA, PCI-DSS, SOX)
+- Information security requirements
+- Business continuity provisions
+- Data privacy protections
+- Background check requirements for personnel
+- Regulatory reporting obligations
+- Audit rights for the client
+
+### 4.3 Government Projects
+
+All SOWs for government clients must include:
+- Compliance with applicable procurement regulations
+- Required certifications and clearances
+- Flow-down provisions from prime contracts
+- Small business subcontracting commitments (if applicable)
+- Country of origin requirements for technology
+- Export control compliance
+
+### 4.4 International Projects
+
+All SOWs for international clients must include:
+- Governing law and jurisdiction
+- Currency and exchange rate provisions
+- Tax implications and responsibilities
+- Export control compliance
+- Country-specific regulatory requirements
+- Language for dispute resolution
+- Force majeure provisions
+
+## 5. Risk Assessment and Mitigation
+
+### 5.1 Required Risk Assessment
+
+Each SOW must undergo a risk assessment that evaluates:
+- Financial risk (payment terms, client creditworthiness)
+- Delivery risk (timeline feasibility, resource availability)
+- Technical risk (complexity, technology maturity)
+- Legal risk (liability exposure, IP concerns)
+- Reputational risk (client profile, project visibility)
+
+### 5.2 Risk Mitigation Requirements
+
+Based on the risk assessment, appropriate mitigation measures must be incorporated into the SOW:
+- **High Financial Risk**: Require advance payment or more frequent milestone payments
+- **High Delivery Risk**: Include contingency time, phased approach, and additional status reviews
+- **High Technical Risk**: Require proof of concept phase, technical review gates, and additional testing
+- **High Legal Risk**: Enhanced limitation of liability, indemnification, and insurance requirements
+- **High Reputational Risk**: Additional executive oversight and client relationship management
+
+### 5.3 Prohibited Terms
+
+The following terms are prohibited in all SOWs unless specific written exception is granted by the Legal & Compliance Department:
+- Unlimited liability
+- Performance guarantees without objective criteria
+- Success fees without clear definition of success
+- Non-standard IP ownership transfers
+- Open-ended scope commitments
+- Penalties without corresponding client obligations
+- Auto-renewal provisions
+
+## 6. Exception Process
+
+Exceptions to these guidelines require:
+1. Written justification from the requesting manager
+2. Risk assessment by Legal & Compliance
+3. Approval by the VP of Legal & Compliance
+4. Documentation in the Exception Registry
+
+All exceptions must be time-limited and SOW-specific. Recurring exceptions may be considered for inclusion in future versions of these guidelines.
+
+## 7. Change Management
+
+### 7.1 SOW Changes
+
+All changes to executed SOWs must:
+- Be documented in a formal Change Request
+- Follow the same approval process as the original SOW
+- Include revised pricing, timeline, and scope impact
+- Be signed by both TechNova and the client
+- Be attached to the original SOW
+
+### 7.2 Change Limitations
+
+The following changes require escalation to the Risk Management Committee:
+- Scope changes exceeding 20% of original project scope
+- Timeline extensions exceeding 3 months
+- Budget increases exceeding 15% of original value
+- Changes to key personnel
+- Changes to payment terms
+- Changes to liability or indemnification provisions
+
+## 8. Quality Assurance
+
+### 8.1 SOW Quality Metrics
+
+The following metrics will be tracked for all SOWs:
+- Percentage of SOWs requiring exceptions
+- Average time for SOW approval
+- Number of changes per SOW
+- Delivery performance against SOW commitments
+- Client satisfaction with SOW clarity and completeness
+
+### 8.2 Compliance Auditing
+
+The Internal Audit department will conduct quarterly reviews of SOW compliance with these guidelines. Findings will be reported to the Executive Leadership Team with remediation plans for any identified gaps.
+
+## 9. Training and Awareness
+
+All personnel involved in SOW development, review, or execution must:
+- Complete annual SOW compliance training
+- Acknowledge review of these guidelines
+- Have access to SOW templates and examples
+- Receive updates when guidelines are revised
+
+## 10. Document Retention
+
+All SOWs and supporting documentation must be retained:
+- In the centralized Contract Management System
+- For a minimum of 7 years after contract completion
+- In accordance with the Corporate Record Retention Policy
+
+## 11. Revision History
+
+| Version | Date | Description | Approved By |
+|---------|------|-------------|-------------|
+| 1.0 | Jan 15, 2022 | Initial document | Executive Committee |
+| 2.0 | Mar 10, 2023 | Added industry-specific requirements | Executive Committee |
+| 3.0 | Oct 22, 2024 | Major revision to align with updated MSA | Executive Committee |
+| 3.1 | Nov 30, 2024 | Updated financial terms requirements | VP of Legal |
+| 3.2 | Dec 15, 2024 | Added healthcare requirements | Executive Committee |
+
+## 12. Attachments
+
+- Attachment A: SOW Review Checklist (Form COMP-SOW-001)
+- Attachment B: Standard SOW Templates by Industry
+- Attachment C: Common Compliance Risks and Mitigations
+- Attachment D: Exception Request Form
