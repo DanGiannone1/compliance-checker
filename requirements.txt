@@ -1,4 +1,4 @@
-azure-ai-inference
+
 python-dotenv
 azure-core
 tiktoken
@@ -6,3 +6,8 @@ fastapi
 uvicorn
 pydantic
 python-multipart
+azure-ai-projects
+azure-identity
+azure-monitor-opentelemetry
+opentelemetry-instrumentation-openai-v2
+opentelemetry-sdk

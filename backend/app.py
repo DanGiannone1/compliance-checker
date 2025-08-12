@@ -1,21 +1,20 @@
-# app.py - FastAPI backend
-from fastapi import FastAPI, HTTPException, UploadFile, File
+# app.py - FastAPI backend using Azure AI Projects SDK
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
 import tiktoken
+from typing import List
 from dotenv import load_dotenv
-from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import (
-    SystemMessage,
-    UserMessage,
-)
-from azure.core.credentials import AzureKeyCredential
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
 
 load_dotenv()
 
-app = FastAPI(title="Policy Analyzer API")
+app = FastAPI(title="Document Validator API")
 
 # Add CORS middleware to allow requests from the React frontend
 app.add_middleware(
@@ -26,17 +25,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set up Azure client using environment-based values
-endpoint = os.getenv("AZURE_INFERENCE_SDK_ENDPOINT")
-model_name = os.getenv("DEPLOYMENT_NAME", "gpt-4o")
-api_key = os.getenv("FOUNDRY_API_KEY")
+# Set up Azure AI Project client using environment-based values
+endpoint = os.getenv("PROJECT_ENDPOINT")
+model_deployment_name = os.getenv("MODEL_DEPLOYMENT_NAME")
 
-# Policy document configuration
-POLICY_FILE_PATH = os.getenv("POLICY_FILE_PATH", "D:/projects/compliance-checker/sample_data/compliance_guidelines.txt")
+if not endpoint or not model_deployment_name:
+    raise ValueError("PROJECT_ENDPOINT and MODEL_DEPLOYMENT_NAME must be set in environment")
 
-client = ChatCompletionsClient(
+# Initialize Azure AI Project client
+project_client = AIProjectClient(
+    credential=DefaultAzureCredential(),
     endpoint=endpoint,
-    credential=AzureKeyCredential(api_key or "MISSING_KEY")
+)
+
+# Set up tracing (optional - can be disabled by removing these lines)
+try:
+    connection_string = project_client.telemetry.get_application_insights_connection_string()
+    os.environ["AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED"] = "true"
+    OpenAIInstrumentor().instrument()
+    configure_azure_monitor(connection_string=connection_string)
+    print("✅ Tracing configured")
+except Exception as e:
+    print(f"⚠️ Tracing setup failed (continuing without tracing): {e}")
+
+# Get OpenAI client
+openai_client = project_client.get_openai_client(
+    api_version="2024-02-01"
 )
 
 # Constants
@@ -44,11 +58,13 @@ MAX_TOKENS = 50000  # Maximum context window size
 ENCODING_NAME = "cl100k_base"  # Encoding for token counting
 
 # Input models
-class AnalysisInput(BaseModel):
-    sow: str
+class ValidationInput(BaseModel):
+    input_document: str
+    reference_document: str
+    instructions: str
 
-class AnalysisResult(BaseModel):
-    violations: list
+class ValidationResult(BaseModel):
+    findings: List[str]
     success: bool
     message: str
 
@@ -69,43 +85,43 @@ def chunk_document(document, max_chunk_size, encoding_name=ENCODING_NAME):
     
     return chunks
 
-def load_policy_document():
-    """Load policy document from local storage"""
-    try:
-        with open(POLICY_FILE_PATH, 'r', encoding='utf-8') as file:
-            return file.read()
-    except Exception as e:
-        print(f"Error loading policy file: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load policy document: {str(e)}")
-
-def analyze_policy(sow_content, policy_chunk):
-    """Analyze policy chunk against SOW using LLM"""
-    system_prompt = f"""
-    You are a compliance analyst. Your task is to examine the Statement of Work (SOW) 
-    against company policies to identify any potential violations. 
-    List ONLY the specific violations found, if any. If no violations are found, state 'No violations found.'
-    
-    Here is the Statement of Work:
-    {sow_content}
-    """
+def validate_document_chunk(instructions, input_document, reference_chunk):
+    """Validate input document against reference chunk using LLM"""
+    system_prompt = """You are an analyst. Your task is to examine an input document and validate it against a reference document. An example might be that you are given a statement of work, and you need to validate it against a corporate policy document to ensure it adheres to all guidelines. Or perhaps you are given a design document and need to validate it against a security policy."""
     
     user_prompt = f"""
-    Please analyze the SOW against the following company policy:
-    
-    {policy_chunk}
-    
-    Return only the violations found. Be specific about which part of the policy is violated by which part of the SOW.
-    """
+#######BEGIN USER INSTRUCTIONS/GUIDANCE########### 
+{instructions}
+
+#######END USER INSTRUCTIONS/GUIDANCE###########
+
+
+
+#######BEGIN INPUT DOCUMENT##########
+{input_document}
+
+########END INPUT DOCUMENT##########
+
+
+#######BEGIN REFERENCE DOCUMENT CONTENT##########
+{reference_chunk}
+
+########END REFERENCE DOCUMENT CONTENT##########
+
+Please analyze the input document against this reference document section and provide your findings.
+"""
     
     messages = [
-        SystemMessage(system_prompt),
-        UserMessage(user_prompt)
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
     ]
     
     try:
-        response = client.complete(
+        response = openai_client.chat.completions.create(
+            model=model_deployment_name,
             messages=messages,
-            model=model_name
+            temperature=0,
+            max_tokens=5000
         )
         
         if response.choices:
@@ -116,87 +132,206 @@ def analyze_policy(sow_content, policy_chunk):
         print(f"Error during LLM call: {e}")
         return f"Error: {str(e)}"
 
-@app.post("/analyze", response_model=AnalysisResult)
-async def analyze(input_data: AnalysisInput):
-    """Analyze SOW against policy guidelines for violations"""
+@app.post("/validate", response_model=ValidationResult)
+async def validate_documents(input_data: ValidationInput):
+    """Validate input document against reference document"""
     try:
-        sow_content = input_data.sow
+        instructions = input_data.instructions
+        input_document = input_data.input_document
+        reference_document = input_data.reference_document
         
-        # Load policy document from local storage
-        policy_content = load_policy_document()
+        # Count tokens for each component
+        system_prompt = """You are an analyst. Your task is to examine an input document and validate it against a reference document. An example might be that you are given a statement of work, and you need to validate it against a corporate policy document to ensure it adheres to all guidelines. Or perhaps you are given a design document and need to validate it against a security policy."""
         
-        # Count tokens in SOW
-        sow_tokens = count_tokens(sow_content)
-        print(f"SOW contains {sow_tokens} tokens")
+        system_tokens = count_tokens(system_prompt)
+        instructions_tokens = count_tokens(f"Instructions: {instructions}")
+        input_tokens = count_tokens(f"Input Document:\n{input_document}")
         
-        # Calculate available tokens for policy content
-        available_tokens = MAX_TOKENS - sow_tokens - 1000  # Reserve 1000 tokens for prompts
-        print(f"Available tokens for policy content: {available_tokens}")
+        # Calculate overhead for user prompt template
+        user_prompt_template = """
+Instructions: {instructions}
+
+Input Document:
+{input_document}
+
+Reference Document Section:
+{reference_chunk}
+
+Please analyze the input document against this reference document section and provide your findings.
+"""
+        template_overhead = count_tokens(user_prompt_template.format(
+            instructions="",
+            input_document="", 
+            reference_chunk=""
+        ))
         
-        if available_tokens <= 0:
-            return AnalysisResult(
-                violations=[],
+        # Calculate total overhead (system + instructions + input + template)
+        total_overhead = system_tokens + instructions_tokens + input_tokens + template_overhead + 50  # 50 token buffer
+        
+        print(f"System tokens: {system_tokens}")
+        print(f"Instructions tokens: {instructions_tokens}")
+        print(f"Input document tokens: {input_tokens}")
+        print(f"Template overhead tokens: {template_overhead}")
+        print(f"Total overhead: {total_overhead}")
+        
+        # Calculate available tokens for reference document chunks
+        available_tokens = MAX_TOKENS - total_overhead
+        print(f"Available tokens for reference content: {available_tokens}")
+        
+        if available_tokens <= 1000:  # Need at least some tokens for reference content
+            return ValidationResult(
+                findings=[],
                 success=False,
-                message="SOW is too large to process with the current MAX_TOKENS setting."
+                message=f"Input document + overhead ({total_overhead} tokens) is too large. Available tokens for reference: {available_tokens}"
             )
         
-        # Split policy content into chunks
-        policy_chunks = chunk_document(policy_content, available_tokens)
-        print(f"Split policy into {len(policy_chunks)} chunks")
+        # Split reference document into chunks
+        reference_chunks = chunk_document(reference_document, available_tokens)
+        print(f"Split reference document into {len(reference_chunks)} chunks")
         
-        # Initialize violations tracker
-        all_violations = []
+        # Initialize findings tracker
+        all_findings = []
         
-        # Process each policy chunk
-        for i, chunk in enumerate(policy_chunks):
-            print(f"\nProcessing policy chunk {i+1}/{len(policy_chunks)}...")
+        # Process each reference chunk
+        for i, chunk in enumerate(reference_chunks):
+            print(f"\nProcessing reference chunk {i+1}/{len(reference_chunks)}...")
             
-            # Analyze current chunk
-            result = analyze_policy(sow_content, chunk)
+            # Validate against current chunk
+            result = validate_document_chunk(instructions, input_document, chunk)
             
-            # Record violations
-            if "No violations found" not in result:
-                all_violations.append(result)
+            # Record findings (assuming any non-empty meaningful response contains findings)
+            if result and result.strip() and "no findings" not in result.lower():
+                all_findings.append(f"Chunk {i+1}: {result}")
             
-            print(f"Analysis complete for chunk {i+1}")
+            print(f"Validation complete for chunk {i+1}")
         
         # Return results
-        return AnalysisResult(
-            violations=all_violations,
+        return ValidationResult(
+            findings=all_findings,
             success=True,
-            message=f"Analysis complete. Found {len(all_violations)} policy violation sets."
+            message=f"Validation complete. Processed {len(reference_chunks)} reference document sections."
         )
         
     except Exception as e:
-        return AnalysisResult(
-            violations=[],
+        return ValidationResult(
+            findings=[],
             success=False,
-            message=f"Error during analysis: {str(e)}"
+            message=f"Error during validation: {str(e)}"
         )
 
-@app.post("/analyze-file", response_model=AnalysisResult)
-async def analyze_file(
-    sow_file: UploadFile = File(...)
+@app.post("/validate-files", response_model=ValidationResult)
+async def validate_files(
+    input_file: UploadFile = File(...),
+    reference_file: UploadFile = File(...),
+    instructions: str = Form(...)
 ):
-    """Analyze SOW file against locally stored policy for violations"""
+    """Validate input file against reference file with custom instructions"""
     try:
-        sow_content = await sow_file.read()
+        # Read input file
+        input_content = await input_file.read()
+        input_text = input_content.decode("utf-8")
         
-        # Convert bytes to string
-        sow_text = sow_content.decode("utf-8")
+        # Read reference file
+        reference_content = await reference_file.read()
+        reference_text = reference_content.decode("utf-8")
         
-        # Create input model
-        input_data = AnalysisInput(sow=sow_text)
+        # Create validation input
+        validation_input = ValidationInput(
+            input_document=input_text,
+            reference_document=reference_text,
+            instructions=instructions
+        )
         
-        # Call the analyze function
-        return await analyze(input_data)
+        # Call the validate function
+        return await validate_documents(validation_input)
         
     except Exception as e:
-        return AnalysisResult(
-            violations=[],
+        return ValidationResult(
+            findings=[],
             success=False,
-            message=f"Error processing SOW file: {str(e)}"
+            message=f"Error processing files: {str(e)}"
         )
+
+def load_local_file(file_path):
+    """Load a local file and return its content"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return file.read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load file {file_path}: {str(e)}")
+
+@app.post("/test-validation", response_model=ValidationResult)
+async def test_validation():
+    """Test validation using local sample files"""
+    try:
+        # Define file paths - sample_data is at the same level as backend folder
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level from backend/
+        sample_data_dir = os.path.join(base_dir, "sample_data")
+        
+        sow_path = os.path.join(sample_data_dir, "sow.txt")
+        guidelines_path = os.path.join(sample_data_dir, "compliance_guidelines.txt")
+        instructions_path = os.path.join(sample_data_dir, "instructions.txt")
+        
+        # Load the local files
+        input_document = load_local_file(sow_path)
+        reference_document = load_local_file(guidelines_path)
+        instructions = load_local_file(instructions_path)
+        
+        print(f"✅ Loaded test files:")
+        print(f"  - Input document: {len(input_document)} characters")
+        print(f"  - Reference document: {len(reference_document)} characters") 
+        print(f"  - Instructions: {len(instructions)} characters")
+        
+        # Create validation input
+        validation_input = ValidationInput(
+            input_document=input_document,
+            reference_document=reference_document,
+            instructions=instructions
+        )
+        
+        # Call the validate function
+        return await validate_documents(validation_input)
+        
+    except Exception as e:
+        return ValidationResult(
+            findings=[],
+            success=False,
+            message=f"Error in test validation: {str(e)}"
+        )
+
+@app.get("/test-files-info")
+async def test_files_info():
+    """Get information about the test files without running validation"""
+    try:
+        # sample_data is at the same level as backend folder
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level from backend/
+        sample_data_dir = os.path.join(base_dir, "sample_data")
+        
+        files_info = {}
+        
+        for filename in ["sow.txt", "compliance_guidelines.txt", "instructions.txt"]:
+            file_path = os.path.join(sample_data_dir, filename)
+            if os.path.exists(file_path):
+                content = load_local_file(file_path)
+                files_info[filename] = {
+                    "exists": True,
+                    "character_count": len(content),
+                    "token_count": count_tokens(content),
+                    "preview": content[:200] + "..." if len(content) > 200 else content
+                }
+            else:
+                files_info[filename] = {
+                    "exists": False,
+                    "error": f"File not found: {file_path}"
+                }
+        
+        return {
+            "sample_data_directory": sample_data_dir,
+            "files": files_info
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting test files info: {str(e)}")
 
 @app.get("/health")
 async def health_check():
@@ -204,12 +339,4 @@ async def health_check():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    # Create policies directory if it doesn't exist
-    os.makedirs(os.path.dirname(POLICY_FILE_PATH), exist_ok=True)
-    
-    # If policy file doesn't exist, create an empty one
-    if not os.path.exists(POLICY_FILE_PATH):
-        with open(POLICY_FILE_PATH, 'w', encoding='utf-8') as f:
-            f.write("# Default Policy Document\n\nPlease replace this with your actual policy guidelines.")
-    
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
