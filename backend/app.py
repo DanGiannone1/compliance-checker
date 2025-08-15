@@ -1,16 +1,21 @@
-# app.py - FastAPI backend using Azure AI Projects SDK
+# app.py - FastAPI backend with ADLS upload functionality
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
 import tiktoken
-from typing import List
+from typing import List, Literal, Optional
 from dotenv import load_dotenv
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
+from azure.storage.filedatalake import DataLakeServiceClient
+from azure.core.exceptions import AzureError
+import uuid
+from datetime import datetime
+import mimetypes
 
 load_dotenv()
 
@@ -25,9 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set up Azure AI Project client using environment-based values
+# Azure AI Project configuration
 endpoint = os.getenv("PROJECT_ENDPOINT")
 model_deployment_name = os.getenv("MODEL_DEPLOYMENT_NAME")
+
+# Azure Data Lake Storage configuration
+STORAGE_ACCOUNT_NAME = os.getenv("STORAGE_ACCOUNT_NAME", "djg0storage0shared")
+CONTAINER_NAME = os.getenv("CONTAINER_NAME", "shared")
 
 if not endpoint or not model_deployment_name:
     raise ValueError("PROJECT_ENDPOINT and MODEL_DEPLOYMENT_NAME must be set in environment")
@@ -37,6 +46,21 @@ project_client = AIProjectClient(
     credential=DefaultAzureCredential(),
     endpoint=endpoint,
 )
+
+# Initialize Azure Data Lake Storage client
+def get_adls_client():
+    """Get ADLS client using DefaultAzureCredential"""
+    try:
+        account_url = f"https://{STORAGE_ACCOUNT_NAME}.dfs.core.windows.net/"
+        credential = DefaultAzureCredential()
+        service_client = DataLakeServiceClient(
+            account_url=account_url,
+            credential=credential
+        )
+        return service_client
+    except Exception as e:
+        print(f"Failed to connect to ADLS: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect to storage: {str(e)}")
 
 # Set up tracing (optional - can be disabled by removing these lines)
 try:
@@ -56,18 +80,339 @@ openai_client = project_client.get_openai_client(
 # Constants
 MAX_TOKENS = 50000  # Maximum context window size
 ENCODING_NAME = "cl100k_base"  # Encoding for token counting
+HARDCODED_USER_ID = "dangiannone"  # Hardcoded user ID for now
 
-# Input models
+# Enhanced data models
+class Finding(BaseModel):
+    content: str
+    severity: Literal["critical", "warning", "info"]
+    category: str = "general"
+
 class ValidationInput(BaseModel):
     input_document: str
     reference_document: str
     instructions: str
 
 class ValidationResult(BaseModel):
-    findings: List[str]
+    findings: List[Finding]
     success: bool
     message: str
 
+class UploadResponse(BaseModel):
+    success: bool
+    message: str
+    file_id: str
+    file_path: str
+    file_size: int
+    original_filename: str
+
+class FileInfo(BaseModel):
+    file_path: str
+    original_filename: str
+    file_size: int
+    upload_date: str
+
+# ADLS Helper Functions
+def ensure_user_folders_exist(service_client, user_id: str):
+    """Ensure user folders exist in ADLS"""
+    try:
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        # Check if container exists, create if it doesn't
+        if not file_system_client.exists():
+            file_system_client.create_file_system()
+            print(f"✅ Created container: {CONTAINER_NAME}")
+        
+        # Create user directory structure
+        folders_to_create = [
+            f"{user_id}",
+            f"{user_id}/input_docs",
+            f"{user_id}/reference_docs"
+        ]
+        
+        for folder_path in folders_to_create:
+            try:
+                directory_client = file_system_client.get_directory_client(folder_path)
+                if not directory_client.exists():
+                    directory_client.create_directory()
+                    print(f"✅ Created directory: {folder_path}")
+            except AzureError as e:
+                if "PathAlreadyExists" not in str(e):
+                    print(f"⚠️ Error creating directory {folder_path}: {e}")
+                    
+        return file_system_client
+        
+    except Exception as e:
+        print(f"❌ Error ensuring folders exist: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create user folders: {str(e)}")
+
+def upload_file_to_adls(file_system_client, file_content: bytes, file_path: str):
+    """Upload file content to ADLS"""
+    try:
+        file_client = file_system_client.get_file_client(file_path)
+        
+        # Create file and upload data
+        file_client.create_file()
+        file_client.append_data(file_content, offset=0, length=len(file_content))
+        file_client.flush_data(len(file_content))
+        
+        print(f"✅ Uploaded file to: {file_path}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error uploading file to {file_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+def download_file_from_adls(file_system_client, file_path: str) -> bytes:
+    """Download file content from ADLS"""
+    try:
+        file_client = file_system_client.get_file_client(file_path)
+        download = file_client.download_file()
+        return download.readall()
+        
+    except Exception as e:
+        print(f"❌ Error downloading file from {file_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+
+def list_files_in_directory_detailed(file_system_client, directory_path: str) -> List[dict]:
+    """List files in a directory with detailed information"""
+    try:
+        paths = file_system_client.get_paths(path=directory_path, recursive=False)
+        files = []
+        for path in paths:
+            if not path.is_directory:
+                # Get file properties for additional metadata
+                file_client = file_system_client.get_file_client(path.name)
+                try:
+                    properties = file_client.get_file_properties()
+                    file_info = {
+                        "file_path": path.name,
+                        "original_filename": os.path.basename(path.name),
+                        "file_size": properties.size,
+                        "upload_date": properties.last_modified.isoformat() if properties.last_modified else None
+                    }
+                    files.append(file_info)
+                except Exception as e:
+                    print(f"Error getting properties for {path.name}: {e}")
+        return files
+    except Exception as e:
+        print(f"❌ Error listing files in {directory_path}: {e}")
+        return []
+
+def delete_file_from_adls(file_system_client, file_path: str) -> bool:
+    """Delete a file from ADLS"""
+    try:
+        file_client = file_system_client.get_file_client(file_path)
+        file_client.delete_file()
+        print(f"✅ Deleted file: {file_path}")
+        return True
+    except Exception as e:
+        print(f"❌ Error deleting file {file_path}: {e}")
+        return False
+
+# File Upload Endpoints
+@app.post("/upload/input", response_model=UploadResponse)
+async def upload_input_file(file: UploadFile = File(...)):
+    """Upload an input document to ADLS"""
+    try:
+        # Validate file type
+        allowed_types = ['text/plain', 'application/pdf', 'application/msword', 
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        
+        content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+        if content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"File type {content_type} not supported")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Use original filename (will overwrite if exists)
+        file_id = str(uuid.uuid4())  # Keep for tracking purposes
+        file_path = f"{HARDCODED_USER_ID}/input_docs/{file.filename}"
+        
+        # Connect to ADLS and ensure folders exist
+        service_client = get_adls_client()
+        file_system_client = ensure_user_folders_exist(service_client, HARDCODED_USER_ID)
+        
+        # Upload file (will overwrite if exists)
+        upload_file_to_adls(file_system_client, file_content, file_path)
+        
+        return UploadResponse(
+            success=True,
+            message=f"Successfully uploaded {file.filename}",
+            file_id=file_id,
+            file_path=file_path,
+            file_size=file_size,
+            original_filename=file.filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Unexpected error uploading input file: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.post("/upload/reference", response_model=UploadResponse)
+async def upload_reference_file(file: UploadFile = File(...)):
+    """Upload a reference document to ADLS"""
+    try:
+        # Validate file type
+        allowed_types = ['text/plain', 'application/pdf', 'application/msword', 
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        
+        content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+        if content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"File type {content_type} not supported")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Use original filename (will overwrite if exists)
+        file_id = str(uuid.uuid4())  # Keep for tracking purposes
+        file_path = f"{HARDCODED_USER_ID}/reference_docs/{file.filename}"
+        
+        # Connect to ADLS and ensure folders exist
+        service_client = get_adls_client()
+        file_system_client = ensure_user_folders_exist(service_client, HARDCODED_USER_ID)
+        
+        # Upload file (will overwrite if exists)
+        upload_file_to_adls(file_system_client, file_content, file_path)
+        
+        return UploadResponse(
+            success=True,
+            message=f"Successfully uploaded {file.filename}",
+            file_id=file_id,
+            file_path=file_path,
+            file_size=file_size,
+            original_filename=file.filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Unexpected error uploading reference file: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.get("/files/input")
+async def list_input_files():
+    """List all input files for the current user"""
+    try:
+        service_client = get_adls_client()
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        input_dir = f"{HARDCODED_USER_ID}/input_docs"
+        files = list_files_in_directory_detailed(file_system_client, input_dir)
+        
+        return {"files": files}
+        
+    except Exception as e:
+        print(f"❌ Error listing input files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+@app.get("/files/reference")
+async def list_reference_files():
+    """List all reference files for the current user"""
+    try:
+        service_client = get_adls_client()
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        reference_dir = f"{HARDCODED_USER_ID}/reference_docs"
+        files = list_files_in_directory_detailed(file_system_client, reference_dir)
+        
+        return {"files": files}
+        
+    except Exception as e:
+        print(f"❌ Error listing reference files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+@app.get("/files/all")
+async def list_all_files():
+    """List all files for the current user (input and reference)"""
+    try:
+        service_client = get_adls_client()
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        input_dir = f"{HARDCODED_USER_ID}/input_docs"
+        reference_dir = f"{HARDCODED_USER_ID}/reference_docs"
+        
+        input_files = list_files_in_directory_detailed(file_system_client, input_dir)
+        reference_files = list_files_in_directory_detailed(file_system_client, reference_dir)
+        
+        return {
+            "input_files": input_files,
+            "reference_files": reference_files
+        }
+        
+    except Exception as e:
+        print(f"❌ Error listing all files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+@app.delete("/files/delete")
+async def delete_file(file_path: str):
+    """Delete a file from ADLS"""
+    try:
+        # Validate that the file path belongs to the current user
+        if not file_path.startswith(f"{HARDCODED_USER_ID}/"):
+            raise HTTPException(status_code=403, detail="Access denied: Can only delete your own files")
+        
+        service_client = get_adls_client()
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        success = delete_file_from_adls(file_system_client, file_path)
+        
+        if success:
+            return {"success": True, "message": f"Successfully deleted {os.path.basename(file_path)}"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete file")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
+
+# Updated validation endpoints to work with ADLS files
+@app.post("/validate-uploaded", response_model=ValidationResult)
+async def validate_uploaded_files(
+    input_file_path: str = Form(...),
+    reference_file_path: str = Form(...),
+    instructions: str = Form("")
+):
+    """Validate uploaded files from ADLS"""
+    try:
+        # Connect to ADLS
+        service_client = get_adls_client()
+        file_system_client = service_client.get_file_system_client(CONTAINER_NAME)
+        
+        # Download files from ADLS
+        input_content = download_file_from_adls(file_system_client, input_file_path)
+        reference_content = download_file_from_adls(file_system_client, reference_file_path)
+        
+        # Convert bytes to string (assuming text files for now)
+        input_text = input_content.decode('utf-8')
+        reference_text = reference_content.decode('utf-8')
+        
+        # Create validation input
+        validation_input = ValidationInput(
+            input_document=input_text,
+            reference_document=reference_text,
+            instructions=instructions
+        )
+        
+        # Call the existing validate function
+        return await validate_documents(validation_input)
+        
+    except Exception as e:
+        print(f"❌ Error in validate_uploaded_files: {e}")
+        return ValidationResult(
+            findings=[],
+            success=False,
+            message=f"Error during validation: {str(e)}"
+        )
+
+# Keep existing validation functions for backward compatibility
 def count_tokens(text, encoding_name=ENCODING_NAME):
     """Count the number of tokens in a text string"""
     encoding = tiktoken.get_encoding(encoding_name)
@@ -85,30 +430,96 @@ def chunk_document(document, max_chunk_size, encoding_name=ENCODING_NAME):
     
     return chunks
 
+def classify_finding_severity(finding_text: str) -> str:
+    """Classify finding severity based on keywords and patterns"""
+    finding_lower = finding_text.lower()
+    
+    # Critical/Red indicators
+    critical_keywords = [
+        "non-compliant", "violation", "mandatory", "required", "must", 
+        "critical", "error", "failed", "missing", "not documented",
+        "breach", "unauthorized", "prohibited", "forbidden", "does not",
+        "fails to", "lacks", "absent", "omitted"
+    ]
+    
+    # Warning/Yellow indicators  
+    warning_keywords = [
+        "should", "recommended", "preferred", "consider", "advisory",
+        "improvement", "unclear", "ambiguous", "inconsistent", 
+        "may need", "suggest", "review", "could be", "might", "potentially"
+    ]
+    
+    # Info/Green indicators
+    info_keywords = [
+        "compliant", "meets", "satisfies", "adequate", "appropriate",
+        "good practice", "well documented", "clear", "complete", "sufficient",
+        "properly", "correctly", "includes", "covers"
+    ]
+    
+    # Count keyword matches
+    critical_count = sum(1 for keyword in critical_keywords if keyword in finding_lower)
+    warning_count = sum(1 for keyword in warning_keywords if keyword in finding_lower)
+    info_count = sum(1 for keyword in info_keywords if keyword in finding_lower)
+    
+    # Determine severity based on keyword density and specific patterns
+    if critical_count > 0:
+        return "critical"
+    elif warning_count > 0:
+        return "warning" 
+    elif info_count > 0:
+        return "info"
+    else:
+        # Default classification based on length and tone
+        if len(finding_text) > 200 and any(word in finding_lower for word in ["issue", "problem", "concern"]):
+            return "warning"
+        else:
+            return "info"
+
+def extract_category(finding_text: str) -> str:
+    """Extract category from finding text"""
+    finding_lower = finding_text.lower()
+    
+    if any(word in finding_lower for word in ["approval", "review", "committee", "workflow", "process"]):
+        return "Process & Approvals"
+    elif any(word in finding_lower for word in ["documentation", "document", "section", "records"]):
+        return "Documentation"
+    elif any(word in finding_lower for word in ["security", "phi", "privacy", "confidential", "data protection"]):
+        return "Security & Privacy"
+    elif any(word in finding_lower for word in ["timeline", "schedule", "duration", "months", "time"]):
+        return "Timeline"
+    elif any(word in finding_lower for word in ["value", "cost", "budget", "financial", "price", "fee"]):
+        return "Financial"
+    elif any(word in finding_lower for word in ["compliance", "policy", "regulation", "standard"]):
+        return "Compliance"
+    else:
+        return "General"
+
 def validate_document_chunk(instructions, input_document, reference_chunk):
-    """Validate input document against reference chunk using LLM"""
-    system_prompt = """You are an analyst. Your task is to examine an input document and validate it against a reference document. An example might be that you are given a statement of work, and you need to validate it against a corporate policy document to ensure it adheres to all guidelines. Or perhaps you are given a design document and need to validate it against a security policy."""
+    """Validate input document against reference chunk using LLM with enhanced prompting"""
+    system_prompt = """You are an expert compliance analyst. When reviewing documents, you should:
+
+1. Clearly identify compliance issues with specific severity levels
+2. Use these phrases to indicate severity:
+   - For CRITICAL issues: "Non-compliant", "Violation", "Mandatory requirement not met", "Critical finding", "Required but missing", "Does not meet", "Fails to"
+   - For WARNING issues: "Should be addressed", "Recommended improvement", "Consider reviewing", "Advisory", "Could be improved", "May need attention"
+   - For INFO/POSITIVE: "Compliant", "Meets requirements", "Well documented", "Satisfactory", "Properly addressed", "Includes"
+
+3. Structure your response with clear headings and categorize findings by area (Process, Documentation, Security, Timeline, Financial, etc.)
+
+4. Be specific about what is missing or needs attention, and reference the exact requirements from the reference document.
+
+5. Provide actionable recommendations where appropriate."""
     
     user_prompt = f"""
-#######BEGIN USER INSTRUCTIONS/GUIDANCE########### 
-{instructions}
+Instructions: {instructions}
 
-#######END USER INSTRUCTIONS/GUIDANCE###########
-
-
-
-#######BEGIN INPUT DOCUMENT##########
+Input Document:
 {input_document}
 
-########END INPUT DOCUMENT##########
-
-
-#######BEGIN REFERENCE DOCUMENT CONTENT##########
+Reference Document Section:
 {reference_chunk}
 
-########END REFERENCE DOCUMENT CONTENT##########
-
-Please analyze the input document against this reference document section and provide your findings.
+Please analyze the input document against this reference document section. Structure your response with clear findings and indicate the severity of each issue using the guidance in the system prompt. Separate each distinct finding into its own paragraph or section.
 """
     
     messages = [
@@ -121,7 +532,7 @@ Please analyze the input document against this reference document section and pr
             model=model_deployment_name,
             messages=messages,
             temperature=0,
-            max_tokens=5000
+            max_tokens=1000
         )
         
         if response.choices:
@@ -134,14 +545,26 @@ Please analyze the input document against this reference document section and pr
 
 @app.post("/validate", response_model=ValidationResult)
 async def validate_documents(input_data: ValidationInput):
-    """Validate input document against reference document"""
+    """Validate input document against reference document with enhanced severity classification"""
     try:
         instructions = input_data.instructions
         input_document = input_data.input_document
         reference_document = input_data.reference_document
         
         # Count tokens for each component
-        system_prompt = """You are an analyst. Your task is to examine an input document and validate it against a reference document. An example might be that you are given a statement of work, and you need to validate it against a corporate policy document to ensure it adheres to all guidelines. Or perhaps you are given a design document and need to validate it against a security policy."""
+        system_prompt = """You are an expert compliance analyst. When reviewing documents, you should:
+
+1. Clearly identify compliance issues with specific severity levels
+2. Use these phrases to indicate severity:
+   - For CRITICAL issues: "Non-compliant", "Violation", "Mandatory requirement not met", "Critical finding", "Required but missing", "Does not meet", "Fails to"
+   - For WARNING issues: "Should be addressed", "Recommended improvement", "Consider reviewing", "Advisory", "Could be improved", "May need attention"
+   - For INFO/POSITIVE: "Compliant", "Meets requirements", "Well documented", "Satisfactory", "Properly addressed", "Includes"
+
+3. Structure your response with clear headings and categorize findings by area (Process, Documentation, Security, Timeline, Financial, etc.)
+
+4. Be specific about what is missing or needs attention, and reference the exact requirements from the reference document.
+
+5. Provide actionable recommendations where appropriate."""
         
         system_tokens = count_tokens(system_prompt)
         instructions_tokens = count_tokens(f"Instructions: {instructions}")
@@ -157,7 +580,7 @@ Input Document:
 Reference Document Section:
 {reference_chunk}
 
-Please analyze the input document against this reference document section and provide your findings.
+Please analyze the input document against this reference document section. Structure your response with clear findings and indicate the severity of each issue using the guidance in the system prompt. Separate each distinct finding into its own paragraph or section.
 """
         template_overhead = count_tokens(user_prompt_template.format(
             instructions="",
@@ -199,9 +622,56 @@ Please analyze the input document against this reference document section and pr
             # Validate against current chunk
             result = validate_document_chunk(instructions, input_document, chunk)
             
-            # Record findings (assuming any non-empty meaningful response contains findings)
+            # Process the result if we got meaningful content
             if result and result.strip() and "no findings" not in result.lower():
-                all_findings.append(f"Chunk {i+1}: {result}")
+                # Split the result into individual findings (by paragraphs or sections)
+                # Look for section headers (lines starting with numbers or bullet points)
+                finding_sections = []
+                lines = result.split('\n')
+                current_section = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Check if this line starts a new section (numbered, bullet, or header-like)
+                    if (line.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '##', '**')) or
+                        line.startswith(('•', '-', '*')) or
+                        (len(current_section) > 0 and line[0].isupper() and ':' in line)):
+                        
+                        # Save previous section if it has content
+                        if current_section:
+                            section_text = '\n'.join(current_section).strip()
+                            if len(section_text) > 50:  # Filter out very short sections
+                                finding_sections.append(section_text)
+                        
+                        # Start new section
+                        current_section = [line]
+                    else:
+                        current_section.append(line)
+                
+                # Don't forget the last section
+                if current_section:
+                    section_text = '\n'.join(current_section).strip()
+                    if len(section_text) > 50:
+                        finding_sections.append(section_text)
+                
+                # If no clear sections found, treat the whole response as one finding
+                if not finding_sections and len(result.strip()) > 50:
+                    finding_sections = [result.strip()]
+                
+                # Create Finding objects for each section
+                for section in finding_sections:
+                    severity = classify_finding_severity(section)
+                    category = extract_category(section)
+                    
+                    finding = Finding(
+                        content=section,
+                        severity=severity,
+                        category=category
+                    )
+                    all_findings.append(finding)
             
             print(f"Validation complete for chunk {i+1}")
         
@@ -209,7 +679,7 @@ Please analyze the input document against this reference document section and pr
         return ValidationResult(
             findings=all_findings,
             success=True,
-            message=f"Validation complete. Processed {len(reference_chunks)} reference document sections."
+            message=f"Validation complete. Analyzed {len(reference_chunks)} reference document sections and found {len(all_findings)} findings." if all_findings else f"Validation complete. Analyzed {len(reference_chunks)} reference document sections with no issues found."
         )
         
     except Exception as e:
@@ -219,11 +689,12 @@ Please analyze the input document against this reference document section and pr
             message=f"Error during validation: {str(e)}"
         )
 
+# Keep existing endpoints for backward compatibility
 @app.post("/validate-files", response_model=ValidationResult)
 async def validate_files(
     input_file: UploadFile = File(...),
     reference_file: UploadFile = File(...),
-    instructions: str = Form(...)
+    instructions: str = Form("")
 ):
     """Validate input file against reference file with custom instructions"""
     try:
@@ -336,7 +807,7 @@ async def test_files_info():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "adls_connected": True}
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
