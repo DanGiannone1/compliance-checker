@@ -1,20 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Upload, File, Play, CheckCircle, AlertCircle, Loader, AlertTriangle, Info, Shield, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { Upload, File, Play, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-// Enhanced type definitions
-interface Finding {
-  content: string;
-  severity: 'critical' | 'warning' | 'info';
-  category: string;
-}
-
+// Simplified type definitions
 interface ValidationResult {
-  findings: Finding[];
   success: boolean;
   message: string;
+  raw_output?: string; // Add this for the raw LLM output
 }
 
 interface UploadResponse {
@@ -34,16 +28,16 @@ interface FileInfo {
 }
 
 interface FileWithStatus {
-  file?: File; // Optional for existing files loaded from server
+  file?: File;
   status: 'uploading' | 'completed' | 'error' | 'removing';
   id: string;
-  file_path?: string; // ADLS file path returned from upload
-  file_id?: string;   // Unique file ID from backend
+  file_path?: string;
+  file_id?: string;
   error_message?: string;
   original_filename: string;
   file_size: number;
   upload_date?: string;
-  is_existing?: boolean; // Flag for files loaded from server
+  is_existing?: boolean;
 }
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -55,39 +49,6 @@ const DocumentValidator: React.FC = () => {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [results, setResults] = useState<ValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-
-  // Improved severity configuration
-  const severityConfig = {
-    critical: {
-      icon: AlertCircle,
-      color: 'text-red-500',
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-200',
-      badgeColor: 'bg-red-100 text-red-800',
-      label: 'Critical',
-      description: 'Immediate attention required'
-    },
-    warning: {
-      icon: AlertTriangle,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-200',
-      badgeColor: 'bg-amber-100 text-amber-800',
-      label: 'Warning',
-      description: 'Should be addressed'
-    },
-    info: {
-      icon: CheckCircle,
-      color: 'text-emerald-500',
-      bgColor: 'bg-emerald-50',
-      borderColor: 'border-emerald-200',
-      badgeColor: 'bg-emerald-100 text-emerald-800',
-      label: 'Info',
-      description: 'For your information'
-    }
-  };
 
   const generateFileId = () => Math.random().toString(36).substr(2, 9);
 
@@ -102,8 +63,7 @@ const DocumentValidator: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         
-        // Convert server files to FileWithStatus format
-        const convertToFileWithStatus = (fileInfo: FileInfo, type: string): FileWithStatus => ({
+        const convertToFileWithStatus = (fileInfo: FileInfo): FileWithStatus => ({
           status: 'completed' as const,
           id: generateFileId(),
           file_path: fileInfo.file_path,
@@ -113,17 +73,14 @@ const DocumentValidator: React.FC = () => {
           is_existing: true
         });
 
-        // Load input files
         if (data.input_files && data.input_files.length > 0) {
-          // For input files, only take the first one (since we only support one input file)
-          const inputFile = convertToFileWithStatus(data.input_files[0], 'input');
+          const inputFile = convertToFileWithStatus(data.input_files[0]);
           setInputFile(inputFile);
         }
 
-        // Load reference files
         if (data.reference_files && data.reference_files.length > 0) {
           const refFiles = data.reference_files.map((fileInfo: FileInfo) => 
-            convertToFileWithStatus(fileInfo, 'reference')
+            convertToFileWithStatus(fileInfo)
           );
           setReferenceFiles(refFiles);
         }
@@ -149,7 +106,6 @@ const DocumentValidator: React.FC = () => {
       setReferenceFiles(prev => [...prev, fileWithStatus]);
     }
 
-    // Start the actual upload
     uploadFileToBackend(file, type, fileId);
   };
 
@@ -158,7 +114,6 @@ const DocumentValidator: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Determine the correct endpoint
       const endpoint = type === 'input' ? '/upload/input' : '/upload/reference';
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -174,7 +129,6 @@ const DocumentValidator: React.FC = () => {
       const uploadResponse: UploadResponse = await response.json();
 
       if (uploadResponse.success) {
-        // Update the file status to completed with the file path
         if (type === 'input') {
           setInputFile(prev => prev && prev.id === fileId ? {
             ...prev,
@@ -203,7 +157,6 @@ const DocumentValidator: React.FC = () => {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       console.error(`❌ Upload error for ${file.name}:`, error);
       
-      // Update file status to error
       if (type === 'input') {
         setInputFile(prev => prev && prev.id === fileId ? {
           ...prev,
@@ -232,7 +185,6 @@ const DocumentValidator: React.FC = () => {
         fileToRemove = referenceFiles.find(f => f.id === id);
       }
 
-      // Set status to removing to show visual feedback
       if (type === 'input' && inputFile) {
         setInputFile(prev => prev ? { ...prev, status: 'removing' } : prev);
       } else if (type === 'reference') {
@@ -241,7 +193,6 @@ const DocumentValidator: React.FC = () => {
         );
       }
 
-      // If file exists on server, delete it
       if (fileToRemove && fileToRemove.file_path && (fileToRemove.status === 'completed' || fileToRemove.status === 'removing')) {
         const deleteResponse = await fetch(`${API_BASE_URL}/files/delete?file_path=${encodeURIComponent(fileToRemove.file_path)}`, {
           method: 'DELETE',
@@ -253,7 +204,6 @@ const DocumentValidator: React.FC = () => {
         }
       }
 
-      // Remove from state on success
       if (type === 'input') {
         setInputFile(null);
       } else if (type === 'reference') {
@@ -262,7 +212,6 @@ const DocumentValidator: React.FC = () => {
     } catch (error) {
       console.error('Error removing file:', error);
       
-      // Reset status to completed on error
       if (type === 'input' && inputFile) {
         setInputFile(prev => prev ? { ...prev, status: 'completed', error_message: 'Failed to remove file' } : prev);
       } else if (type === 'reference') {
@@ -309,12 +258,6 @@ const DocumentValidator: React.FC = () => {
 
       const data: ValidationResult = await response.json();
       setResults(data);
-      
-      // Auto-expand all categories initially
-      if (data.findings) {
-        const categories = new Set(data.findings.map(f => f.category));
-        setExpandedCategories(categories);
-      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
       setError(errorMessage);
@@ -331,22 +274,9 @@ const DocumentValidator: React.FC = () => {
       case 'removing':
         return <Loader className="h-4 w-4 text-red-500 animate-spin" />;
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'error':
         return <AlertCircle className="h-4 w-4 text-red-500" />;
-    }
-  };
-
-  const getStatusColor = (status: 'uploading' | 'completed' | 'error' | 'removing') => {
-    switch (status) {
-      case 'uploading':
-        return 'border-blue-200 bg-blue-50';
-      case 'removing':
-        return 'border-red-200 bg-red-50';
-      case 'completed':
-        return 'border-emerald-200 bg-emerald-50';
-      case 'error':
-        return 'border-red-200 bg-red-50';
     }
   };
 
@@ -363,45 +293,6 @@ const DocumentValidator: React.FC = () => {
     }
   };
 
-  const toggleCategory = (category: string) => {
-    const newExpanded = new Set(expandedCategories);
-    if (newExpanded.has(category)) {
-      newExpanded.delete(category);
-    } else {
-      newExpanded.add(category);
-    }
-    setExpandedCategories(newExpanded);
-  };
-
-  // Group and filter findings
-  const groupedFindings = results?.findings.reduce((acc, finding) => {
-    if (!acc[finding.category]) {
-      acc[finding.category] = { critical: [], warning: [], info: [] };
-    }
-    acc[finding.category][finding.severity].push(finding);
-    return acc;
-  }, {} as Record<string, Record<string, Finding[]>>) || {};
-
-  // Filter by selected severity
-  const filteredFindings = selectedSeverity === 'all' 
-    ? groupedFindings 
-    : Object.fromEntries(
-        Object.entries(groupedFindings).map(([category, severities]) => [
-          category,
-          { 
-            critical: selectedSeverity === 'critical' ? severities.critical : [],
-            warning: selectedSeverity === 'warning' ? severities.warning : [],
-            info: selectedSeverity === 'info' ? severities.info : []
-          }
-        ])
-      );
-
-  // Summary statistics
-  const findingSummary = results?.findings.reduce((acc, finding) => {
-    acc[finding.severity]++;
-    return acc;
-  }, { critical: 0, warning: 0, info: 0 }) || { critical: 0, warning: 0, info: 0 };
-
   const FileUploadSection: React.FC<{
     title: string;
     files: FileWithStatus[];
@@ -409,19 +300,14 @@ const DocumentValidator: React.FC = () => {
     type: string;
     multiple?: boolean;
   }> = ({ title, files, onFileChange, type, multiple = false }) => (
-    <div className="bg-white rounded-xl p-6 border-2 border-dashed border-slate-300 hover:border-blue-400 transition-all duration-300 hover:bg-blue-50/30">
+    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
       <div className="text-center">
-        <Upload className="mx-auto h-12 w-12 text-slate-400 hover:text-blue-500 transition-colors" />
-        <div className="mt-4">
+        <Upload className="mx-auto h-8 w-8 text-gray-400" />
+        <div className="mt-2">
           <label htmlFor={`file-${type}`} className="cursor-pointer">
-            <span className="mt-2 block text-lg font-semibold text-slate-900 hover:text-blue-600 transition-colors">
-              {title}
-            </span>
-            <span className="mt-1 block text-sm text-slate-600">
-              Click to upload or drag and drop{multiple ? ' (multiple files supported)' : ''}
-            </span>
-            <span className="mt-1 block text-xs text-slate-500">
-              Supports: .txt, .pdf, .doc, .docx
+            <span className="block text-sm font-medium text-gray-700">{title}</span>
+            <span className="block text-xs text-gray-500 mt-1">
+              Click to upload{multiple ? ' (multiple files supported)' : ''}
             </span>
           </label>
           <input
@@ -440,42 +326,25 @@ const DocumentValidator: React.FC = () => {
       </div>
       
       {files.length > 0 && (
-        <div className="mt-6 space-y-3">
+        <div className="mt-4 space-y-2">
           {files.map((fileWithStatus) => (
-            <div 
-              key={fileWithStatus.id} 
-              className={`flex items-center justify-between p-4 rounded-lg border transition-all duration-300 ${getStatusColor(fileWithStatus.status)} ${
-                fileWithStatus.status === 'completed' ? 'shadow-sm' : ''
-              }`}
-            >
+            <div key={fileWithStatus.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
               <div className="flex items-center flex-1">
-                <File className="h-5 w-5 text-slate-600 mr-3 flex-shrink-0" />
+                <File className="h-4 w-4 text-gray-500 mr-2" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-900 truncate">{fileWithStatus.original_filename}</span>
+                    <span className="text-sm text-gray-900 truncate">{fileWithStatus.original_filename}</span>
                     {getStatusIcon(fileWithStatus.status)}
                   </div>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
-                      {(fileWithStatus.file_size / 1024).toFixed(1)} KB
-                    </span>
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                      fileWithStatus.status === 'uploading' ? 'bg-blue-100 text-blue-700' : 
-                      fileWithStatus.status === 'removing' ? 'bg-red-100 text-red-700' :
-                      fileWithStatus.status === 'error' ? 'bg-red-100 text-red-700' : 
-                      'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {getStatusText(fileWithStatus)}
-                    </span>
-                  </div>
+                  <span className="text-xs text-gray-500">{getStatusText(fileWithStatus)}</span>
                 </div>
               </div>
               <button
                 onClick={() => removeFile(type, fileWithStatus.id)}
-                className="text-red-500 hover:text-red-700 text-sm font-medium px-3 py-1 rounded-md hover:bg-red-100 transition-all duration-200 flex-shrink-0 ml-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-red-600 hover:text-red-800 text-sm ml-2 disabled:opacity-50"
                 disabled={fileWithStatus.status === 'uploading' || fileWithStatus.status === 'removing'}
               >
-                {fileWithStatus.status === 'removing' ? 'Removing...' : 'Remove'}
+                Remove
               </button>
             </div>
           ))}
@@ -490,17 +359,16 @@ const DocumentValidator: React.FC = () => {
   const canRunValidation = hasCompletedInputFile && hasCompletedReferenceFiles;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="mb-8 text-center pt-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-3">
-            Document Validator
-          </h1>
-          <p className="text-slate-600 text-lg">Upload documents and validate them against reference materials</p>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Document Validator</h1>
+          <p className="text-gray-600">Upload documents and validate them against reference materials</p>
         </div>
 
         {/* File Upload Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <FileUploadSection
             title="Input Document"
             files={inputFile ? [inputFile] : []}
@@ -518,16 +386,16 @@ const DocumentValidator: React.FC = () => {
         </div>
 
         {/* Instructions Section */}
-        <div className="mb-8">
-          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-            <label htmlFor="instructions" className="block text-lg font-semibold text-slate-900 mb-3">
-              🎯 Validation Instructions <span className="text-sm text-slate-500 font-normal">(Optional)</span>
+        <div className="mb-6">
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <label htmlFor="instructions" className="block text-sm font-medium text-gray-700 mb-2">
+              Validation Instructions (Optional)
             </label>
             <textarea
               id="instructions"
-              rows={4}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 placeholder-slate-500 transition-all duration-200"
-              placeholder="Enter specific instructions for validation (e.g., 'Check for compliance violations', 'Validate security requirements', etc.) or leave blank for general validation"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter specific instructions for validation..."
               value={instructions}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInstructions(e.target.value)}
             />
@@ -535,35 +403,34 @@ const DocumentValidator: React.FC = () => {
         </div>
 
         {/* Run Button */}
-        <div className="mb-8 text-center">
+        <div className="mb-6 text-center">
           <button
             onClick={runValidation}
             disabled={isRunning || !canRunValidation}
-            className="inline-flex items-center px-8 py-4 border border-transparent text-lg font-semibold rounded-xl shadow-lg text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transform transition-all duration-200 hover:scale-105 disabled:hover:scale-100"
+            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isRunning ? (
               <>
-                <Loader className="animate-spin -ml-1 mr-3 h-6 w-6 text-white" />
+                <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
                 Running Validation...
               </>
             ) : (
               <>
-                <Play className="-ml-1 mr-3 h-6 w-6" />
+                <Play className="-ml-1 mr-3 h-5 w-5" />
                 Run Validation
               </>
             )}
           </button>
           {!canRunValidation && (
-            <p className="mt-2 text-sm text-slate-500">
-              {!hasCompletedInputFile && "Upload an input document • "}
-              {!hasCompletedReferenceFiles && "Upload reference documents"}
+            <p className="mt-2 text-sm text-gray-500">
+              Upload both input and reference documents to continue
             </p>
           )}
         </div>
 
         {/* Error Display */}
         {error && (
-          <div className="mb-6 rounded-xl bg-red-50 p-4 border border-red-200">
+          <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
             <div className="flex">
               <AlertCircle className="h-5 w-5 text-red-500" />
               <div className="ml-3">
@@ -574,136 +441,44 @@ const DocumentValidator: React.FC = () => {
           </div>
         )}
 
-        {/* Results Display */}
+        {/* Results Display - Simplified */}
         {results && (
-          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center">
-                📊 Validation Results
-              </h2>
-              
-              {/* Severity Filter */}
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-slate-500" />
-                <select
-                  value={selectedSeverity}
-                  onChange={(e) => setSelectedSeverity(e.target.value)}
-                  className="px-3 py-1 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">All Severities</option>
-                  <option value="critical">Critical Only</option>
-                  <option value="warning">Warning Only</option>
-                  <option value="info">Info Only</option>
-                </select>
-              </div>
-            </div>
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Validation Results</h2>
             
-            {/* Improved Summary Statistics */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              {Object.entries(severityConfig).map(([severity, config]) => (
-                <div key={severity} className={`${config.bgColor} border ${config.borderColor} rounded-lg p-4 text-center`}>
-                  <div className="flex items-center justify-center mb-2">
-                    <config.icon className={`h-6 w-6 ${config.color}`} />
-                  </div>
-                  <div className={`text-2xl font-bold ${config.color}`}>
-                    {findingSummary[severity as keyof typeof findingSummary]}
-                  </div>
-                  <div className="text-sm font-medium text-slate-700">{config.label}</div>
-                  <div className="text-xs text-slate-500">{config.description}</div>
-                </div>
-              ))}
-            </div>
-
             {results.success ? (
-              <div className="space-y-6">
-                <div className="flex items-center text-emerald-600 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-                  <CheckCircle className="h-6 w-6 mr-3" />
-                  <span className="font-medium text-lg">{results.message}</span>
+              <div>
+                <div className="flex items-center text-green-600 bg-green-50 p-3 rounded-md border border-green-200 mb-4">
+                  <CheckCircle className="h-5 w-5 mr-2" />
+                  <span className="font-medium">{results.message}</span>
                 </div>
                 
-                {results.findings && results.findings.length > 0 ? (
-                  <div>
-                    {/* Findings grouped by category */}
-                    {Object.entries(filteredFindings).map(([category, findings]) => {
-                      const categoryHasFindings = findings.critical.length > 0 || findings.warning.length > 0 || findings.info.length > 0;
-                      if (!categoryHasFindings) return null;
-                      
-                      return (
-                        <div key={category} className="mb-6">
-                          <button
-                            onClick={() => toggleCategory(category)}
-                            className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors duration-200"
-                          >
-                            <div className="flex items-center">
-                              <Shield className="h-5 w-5 text-slate-600 mr-3" />
-                              <h4 className="text-lg font-semibold text-slate-900">{category}</h4>
-                              <span className="ml-3 text-sm text-slate-500">
-                                ({findings.critical.length + findings.warning.length + findings.info.length} findings)
-                              </span>
-                            </div>
-                            {expandedCategories.has(category) ? 
-                              <ChevronUp className="h-5 w-5 text-slate-500" /> :
-                              <ChevronDown className="h-5 w-5 text-slate-500" />
-                            }
-                          </button>
-                          
-                          {expandedCategories.has(category) && (
-                            <div className="mt-4 space-y-3">
-                              {(['critical', 'warning', 'info'] as const).map(severity => (
-                                findings[severity].map((finding, index) => {
-                                  const config = severityConfig[severity];
-                                  return (
-                                    <div 
-                                      key={`${severity}-${index}`} 
-                                      className={`${config.bgColor} border ${config.borderColor} rounded-lg p-4 ml-4`}
-                                    >
-                                      <div className="flex items-start">
-                                        <config.icon className={`h-5 w-5 ${config.color} mr-3 mt-1 flex-shrink-0`} />
-                                        <div className="flex-1">
-                                          <div className="flex items-center mb-2">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.badgeColor}`}>
-                                              {config.label}
-                                            </span>
-                                          </div>
-                                          <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed">
-                                            <ReactMarkdown 
-                                              components={{
-                                                h1: (props: any) => <h1 className="text-lg font-bold text-slate-900 mb-2" {...props} />,
-                                                h2: (props: any) => <h2 className="text-base font-semibold text-slate-800 mb-2 mt-3" {...props} />,
-                                                h3: (props: any) => <h3 className="text-sm font-semibold text-slate-700 mb-1 mt-2" {...props} />,
-                                                p: (props: any) => <p className="mb-2 text-slate-700" {...props} />,
-                                                ul: (props: any) => <ul className="list-disc list-inside mb-2 text-slate-700" {...props} />,
-                                                ol: (props: any) => <ol className="list-decimal list-inside mb-2 text-slate-700" {...props} />,
-                                                li: (props: any) => <li className="mb-1 text-slate-700" {...props} />,
-                                                strong: (props: any) => <strong className="font-semibold text-slate-900" {...props} />,
-                                                em: (props: any) => <em className="italic text-slate-600" {...props} />,
-                                                code: (props: any) => <code className="bg-slate-200 px-2 py-1 rounded text-slate-800 font-mono text-sm" {...props} />,
-                                                blockquote: (props: any) => <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 my-3" {...props} />
-                                              }}
-                                            >
-                                              {finding.content}
-                                            </ReactMarkdown>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
-                    <div className="text-emerald-700">✅ No violations or issues found.</div>
+                {/* Simple markdown output */}
+                {results.raw_output && (
+                  <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900">
+                    <ReactMarkdown
+                      components={{
+                        h1: (props: any) => <h1 className="text-xl font-bold text-gray-900 mb-3 mt-6 first:mt-0" {...props} />,
+                        h2: (props: any) => <h2 className="text-lg font-semibold text-gray-900 mb-2 mt-5 first:mt-0" {...props} />,
+                        h3: (props: any) => <h3 className="text-lg font-bold text-gray-900 mb-2 mt-4 first:mt-0" {...props} />,
+                        p: (props: any) => <p className="mb-3 text-gray-800 leading-relaxed" {...props} />,
+                        ul: (props: any) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
+                        ol: (props: any) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
+                        li: (props: any) => <li className="text-gray-800 leading-relaxed" {...props} />,
+                        strong: (props: any) => <strong className="font-semibold text-gray-900" {...props} />,
+                        em: (props: any) => <em className="italic text-gray-700" {...props} />,
+                        code: (props: any) => <code className="bg-gray-100 px-2 py-1 rounded text-gray-900 font-mono text-sm" {...props} />,
+                        blockquote: (props: any) => <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-700 my-4 bg-gray-50 py-2" {...props} />,
+                        hr: (props: any) => <hr className="my-6 border-gray-300" {...props} />
+                      }}
+                    >
+                      {results.raw_output}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="rounded-lg bg-red-50 p-4 border border-red-200">
+              <div className="rounded-md bg-red-50 p-4 border border-red-200">
                 <div className="flex">
                   <AlertCircle className="h-5 w-5 text-red-500" />
                   <div className="ml-3">

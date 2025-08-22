@@ -1,11 +1,11 @@
-# app.py - FastAPI backend with ADLS upload functionality
+# app.py - Simplified FastAPI backend with ADLS upload functionality
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
 import tiktoken
-from typing import List, Literal, Optional
+from typing import List, Optional
 from dotenv import load_dotenv
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -16,6 +16,7 @@ from azure.core.exceptions import AzureError
 import uuid
 from datetime import datetime
 import mimetypes
+from prompts import VALIDATION_SYSTEM_PROMPT, get_validation_user_prompt
 
 load_dotenv()
 
@@ -82,21 +83,16 @@ MAX_TOKENS = 50000  # Maximum context window size
 ENCODING_NAME = "cl100k_base"  # Encoding for token counting
 HARDCODED_USER_ID = "dangiannone"  # Hardcoded user ID for now
 
-# Enhanced data models
-class Finding(BaseModel):
-    content: str
-    severity: Literal["critical", "warning", "info"]
-    category: str = "general"
-
+# Simplified data models
 class ValidationInput(BaseModel):
     input_document: str
     reference_document: str
     instructions: str
 
 class ValidationResult(BaseModel):
-    findings: List[Finding]
     success: bool
     message: str
+    raw_output: Optional[str] = None  # Just return the raw LLM output
 
 class UploadResponse(BaseModel):
     success: bool
@@ -112,7 +108,7 @@ class FileInfo(BaseModel):
     file_size: int
     upload_date: str
 
-# ADLS Helper Functions
+# ADLS Helper Functions (keeping these the same)
 def ensure_user_folders_exist(service_client, user_id: str):
     """Ensure user folders exist in ADLS"""
     try:
@@ -210,7 +206,7 @@ def delete_file_from_adls(file_system_client, file_path: str) -> bool:
         print(f"❌ Error deleting file {file_path}: {e}")
         return False
 
-# File Upload Endpoints
+# File Upload Endpoints (keeping these the same)
 @app.post("/upload/input", response_model=UploadResponse)
 async def upload_input_file(file: UploadFile = File(...)):
     """Upload an input document to ADLS"""
@@ -373,14 +369,56 @@ async def delete_file(file_path: str):
         print(f"❌ Error deleting file: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
 
-# Updated validation endpoints to work with ADLS files
+# Simplified validation functions
+def count_tokens(text, encoding_name=ENCODING_NAME):
+    """Count the number of tokens in a text string"""
+    encoding = tiktoken.get_encoding(encoding_name)
+    return len(encoding.encode(text))
+
+def chunk_document(document, max_chunk_size, encoding_name=ENCODING_NAME):
+    """Split document into chunks of approximately max_chunk_size tokens"""
+    encoding = tiktoken.get_encoding(encoding_name)
+    tokens = encoding.encode(document)
+    chunks = []
+    
+    for i in range(0, len(tokens), max_chunk_size):
+        chunk_tokens = tokens[i:i+max_chunk_size]
+        chunks.append(encoding.decode(chunk_tokens))
+    
+    return chunks
+
+def validate_document_chunk(instructions, input_document, reference_chunk):
+    """Validate input document against reference chunk using LLM"""
+    user_prompt = get_validation_user_prompt(instructions, input_document, reference_chunk)
+    
+    messages = [
+        {"role": "system", "content": VALIDATION_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt}
+    ]
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model=model_deployment_name,
+            messages=messages,
+            temperature=0,
+            max_tokens=1000
+        )
+        
+        if response.choices:
+            return response.choices[0].message.content
+        else:
+            return "No response from model"
+    except Exception as e:
+        print(f"Error during LLM call: {e}")
+        return f"Error: {str(e)}"
+
 @app.post("/validate-uploaded", response_model=ValidationResult)
 async def validate_uploaded_files(
     input_file_path: str = Form(...),
     reference_file_path: str = Form(...),
     instructions: str = Form("")
 ):
-    """Validate uploaded files from ADLS"""
+    """Validate uploaded files from ADLS - simplified version"""
     try:
         # Connect to ADLS
         service_client = get_adls_client()
@@ -401,200 +439,36 @@ async def validate_uploaded_files(
             instructions=instructions
         )
         
-        # Call the existing validate function
+        # Call the simplified validate function
         return await validate_documents(validation_input)
         
     except Exception as e:
         print(f"❌ Error in validate_uploaded_files: {e}")
         return ValidationResult(
-            findings=[],
             success=False,
             message=f"Error during validation: {str(e)}"
         )
 
-# Keep existing validation functions for backward compatibility
-def count_tokens(text, encoding_name=ENCODING_NAME):
-    """Count the number of tokens in a text string"""
-    encoding = tiktoken.get_encoding(encoding_name)
-    return len(encoding.encode(text))
-
-def chunk_document(document, max_chunk_size, encoding_name=ENCODING_NAME):
-    """Split document into chunks of approximately max_chunk_size tokens"""
-    encoding = tiktoken.get_encoding(encoding_name)
-    tokens = encoding.encode(document)
-    chunks = []
-    
-    for i in range(0, len(tokens), max_chunk_size):
-        chunk_tokens = tokens[i:i+max_chunk_size]
-        chunks.append(encoding.decode(chunk_tokens))
-    
-    return chunks
-
-def classify_finding_severity(finding_text: str) -> str:
-    """Classify finding severity based on keywords and patterns"""
-    finding_lower = finding_text.lower()
-    
-    # Critical/Red indicators
-    critical_keywords = [
-        "non-compliant", "violation", "mandatory", "required", "must", 
-        "critical", "error", "failed", "missing", "not documented",
-        "breach", "unauthorized", "prohibited", "forbidden", "does not",
-        "fails to", "lacks", "absent", "omitted"
-    ]
-    
-    # Warning/Yellow indicators  
-    warning_keywords = [
-        "should", "recommended", "preferred", "consider", "advisory",
-        "improvement", "unclear", "ambiguous", "inconsistent", 
-        "may need", "suggest", "review", "could be", "might", "potentially"
-    ]
-    
-    # Info/Green indicators
-    info_keywords = [
-        "compliant", "meets", "satisfies", "adequate", "appropriate",
-        "good practice", "well documented", "clear", "complete", "sufficient",
-        "properly", "correctly", "includes", "covers"
-    ]
-    
-    # Count keyword matches
-    critical_count = sum(1 for keyword in critical_keywords if keyword in finding_lower)
-    warning_count = sum(1 for keyword in warning_keywords if keyword in finding_lower)
-    info_count = sum(1 for keyword in info_keywords if keyword in finding_lower)
-    
-    # Determine severity based on keyword density and specific patterns
-    if critical_count > 0:
-        return "critical"
-    elif warning_count > 0:
-        return "warning" 
-    elif info_count > 0:
-        return "info"
-    else:
-        # Default classification based on length and tone
-        if len(finding_text) > 200 and any(word in finding_lower for word in ["issue", "problem", "concern"]):
-            return "warning"
-        else:
-            return "info"
-
-def extract_category(finding_text: str) -> str:
-    """Extract category from finding text"""
-    finding_lower = finding_text.lower()
-    
-    if any(word in finding_lower for word in ["approval", "review", "committee", "workflow", "process"]):
-        return "Process & Approvals"
-    elif any(word in finding_lower for word in ["documentation", "document", "section", "records"]):
-        return "Documentation"
-    elif any(word in finding_lower for word in ["security", "phi", "privacy", "confidential", "data protection"]):
-        return "Security & Privacy"
-    elif any(word in finding_lower for word in ["timeline", "schedule", "duration", "months", "time"]):
-        return "Timeline"
-    elif any(word in finding_lower for word in ["value", "cost", "budget", "financial", "price", "fee"]):
-        return "Financial"
-    elif any(word in finding_lower for word in ["compliance", "policy", "regulation", "standard"]):
-        return "Compliance"
-    else:
-        return "General"
-
-def validate_document_chunk(instructions, input_document, reference_chunk):
-    """Validate input document against reference chunk using LLM with enhanced prompting"""
-    system_prompt = """You are an expert compliance analyst. When reviewing documents, you should:
-
-1. Clearly identify compliance issues with specific severity levels
-2. Use these phrases to indicate severity:
-   - For CRITICAL issues: "Non-compliant", "Violation", "Mandatory requirement not met", "Critical finding", "Required but missing", "Does not meet", "Fails to"
-   - For WARNING issues: "Should be addressed", "Recommended improvement", "Consider reviewing", "Advisory", "Could be improved", "May need attention"
-   - For INFO/POSITIVE: "Compliant", "Meets requirements", "Well documented", "Satisfactory", "Properly addressed", "Includes"
-
-3. Structure your response with clear headings and categorize findings by area (Process, Documentation, Security, Timeline, Financial, etc.)
-
-4. Be specific about what is missing or needs attention, and reference the exact requirements from the reference document.
-
-5. Provide actionable recommendations where appropriate."""
-    
-    user_prompt = f"""
-Instructions: {instructions}
-
-Input Document:
-{input_document}
-
-Reference Document Section:
-{reference_chunk}
-
-Please analyze the input document against this reference document section. Structure your response with clear findings and indicate the severity of each issue using the guidance in the system prompt. Separate each distinct finding into its own paragraph or section.
-"""
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    
-    try:
-        response = openai_client.chat.completions.create(
-            model=model_deployment_name,
-            messages=messages,
-            temperature=0,
-            max_tokens=1000
-        )
-        
-        if response.choices:
-            return response.choices[0].message.content
-        else:
-            return "No response from model"
-    except Exception as e:
-        print(f"Error during LLM call: {e}")
-        return f"Error: {str(e)}"
-
 @app.post("/validate", response_model=ValidationResult)
 async def validate_documents(input_data: ValidationInput):
-    """Validate input document against reference document with enhanced severity classification"""
+    """Simplified validation that returns raw LLM output"""
     try:
         instructions = input_data.instructions
         input_document = input_data.input_document
         reference_document = input_data.reference_document
         
         # Count tokens for each component
-        system_prompt = """You are an expert compliance analyst. When reviewing documents, you should:
-
-1. Clearly identify compliance issues with specific severity levels
-2. Use these phrases to indicate severity:
-   - For CRITICAL issues: "Non-compliant", "Violation", "Mandatory requirement not met", "Critical finding", "Required but missing", "Does not meet", "Fails to"
-   - For WARNING issues: "Should be addressed", "Recommended improvement", "Consider reviewing", "Advisory", "Could be improved", "May need attention"
-   - For INFO/POSITIVE: "Compliant", "Meets requirements", "Well documented", "Satisfactory", "Properly addressed", "Includes"
-
-3. Structure your response with clear headings and categorize findings by area (Process, Documentation, Security, Timeline, Financial, etc.)
-
-4. Be specific about what is missing or needs attention, and reference the exact requirements from the reference document.
-
-5. Provide actionable recommendations where appropriate."""
-        
-        system_tokens = count_tokens(system_prompt)
+        system_tokens = count_tokens(VALIDATION_SYSTEM_PROMPT)
         instructions_tokens = count_tokens(f"Instructions: {instructions}")
         input_tokens = count_tokens(f"Input Document:\n{input_document}")
         
         # Calculate overhead for user prompt template
-        user_prompt_template = """
-Instructions: {instructions}
-
-Input Document:
-{input_document}
-
-Reference Document Section:
-{reference_chunk}
-
-Please analyze the input document against this reference document section. Structure your response with clear findings and indicate the severity of each issue using the guidance in the system prompt. Separate each distinct finding into its own paragraph or section.
-"""
-        template_overhead = count_tokens(user_prompt_template.format(
-            instructions="",
-            input_document="", 
-            reference_chunk=""
-        ))
+        user_prompt_template = get_validation_user_prompt("", "", "")
+        template_overhead = count_tokens(user_prompt_template)
         
         # Calculate total overhead (system + instructions + input + template)
         total_overhead = system_tokens + instructions_tokens + input_tokens + template_overhead + 50  # 50 token buffer
         
-        print(f"System tokens: {system_tokens}")
-        print(f"Instructions tokens: {instructions_tokens}")
-        print(f"Input document tokens: {input_tokens}")
-        print(f"Template overhead tokens: {template_overhead}")
         print(f"Total overhead: {total_overhead}")
         
         # Calculate available tokens for reference document chunks
@@ -603,7 +477,6 @@ Please analyze the input document against this reference document section. Struc
         
         if available_tokens <= 1000:  # Need at least some tokens for reference content
             return ValidationResult(
-                findings=[],
                 success=False,
                 message=f"Input document + overhead ({total_overhead} tokens) is too large. Available tokens for reference: {available_tokens}"
             )
@@ -612,8 +485,8 @@ Please analyze the input document against this reference document section. Struc
         reference_chunks = chunk_document(reference_document, available_tokens)
         print(f"Split reference document into {len(reference_chunks)} chunks")
         
-        # Initialize findings tracker
-        all_findings = []
+        # Collect all LLM responses
+        all_responses = []
         
         # Process each reference chunk
         for i, chunk in enumerate(reference_chunks):
@@ -622,187 +495,31 @@ Please analyze the input document against this reference document section. Struc
             # Validate against current chunk
             result = validate_document_chunk(instructions, input_document, chunk)
             
-            # Process the result if we got meaningful content
-            if result and result.strip() and "no findings" not in result.lower():
-                # Split the result into individual findings (by paragraphs or sections)
-                # Look for section headers (lines starting with numbers or bullet points)
-                finding_sections = []
-                lines = result.split('\n')
-                current_section = []
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    # Check if this line starts a new section (numbered, bullet, or header-like)
-                    if (line.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '##', '**')) or
-                        line.startswith(('•', '-', '*')) or
-                        (len(current_section) > 0 and line[0].isupper() and ':' in line)):
-                        
-                        # Save previous section if it has content
-                        if current_section:
-                            section_text = '\n'.join(current_section).strip()
-                            if len(section_text) > 50:  # Filter out very short sections
-                                finding_sections.append(section_text)
-                        
-                        # Start new section
-                        current_section = [line]
-                    else:
-                        current_section.append(line)
-                
-                # Don't forget the last section
-                if current_section:
-                    section_text = '\n'.join(current_section).strip()
-                    if len(section_text) > 50:
-                        finding_sections.append(section_text)
-                
-                # If no clear sections found, treat the whole response as one finding
-                if not finding_sections and len(result.strip()) > 50:
-                    finding_sections = [result.strip()]
-                
-                # Create Finding objects for each section
-                for section in finding_sections:
-                    severity = classify_finding_severity(section)
-                    category = extract_category(section)
-                    
-                    finding = Finding(
-                        content=section,
-                        severity=severity,
-                        category=category
-                    )
-                    all_findings.append(finding)
+            if result and result.strip():
+                all_responses.append(f"## Analysis of Reference Section {i+1}\n\n{result}")
             
             print(f"Validation complete for chunk {i+1}")
         
-        # Return results
-        return ValidationResult(
-            findings=all_findings,
-            success=True,
-            message=f"Validation complete. Analyzed {len(reference_chunks)} reference document sections and found {len(all_findings)} findings." if all_findings else f"Validation complete. Analyzed {len(reference_chunks)} reference document sections with no issues found."
-        )
+        # Combine all responses into a single markdown document
+        if all_responses:
+            combined_output = "\n\n---\n\n".join(all_responses)
+            return ValidationResult(
+                success=True,
+                message=f"Validation complete. Analyzed {len(reference_chunks)} reference document sections.",
+                raw_output=combined_output
+            )
+        else:
+            return ValidationResult(
+                success=True,
+                message=f"Validation complete. Analyzed {len(reference_chunks)} reference document sections with no significant findings.",
+                raw_output="No significant findings or issues identified in the validation."
+            )
         
     except Exception as e:
         return ValidationResult(
-            findings=[],
             success=False,
             message=f"Error during validation: {str(e)}"
         )
-
-# Keep existing endpoints for backward compatibility
-@app.post("/validate-files", response_model=ValidationResult)
-async def validate_files(
-    input_file: UploadFile = File(...),
-    reference_file: UploadFile = File(...),
-    instructions: str = Form("")
-):
-    """Validate input file against reference file with custom instructions"""
-    try:
-        # Read input file
-        input_content = await input_file.read()
-        input_text = input_content.decode("utf-8")
-        
-        # Read reference file
-        reference_content = await reference_file.read()
-        reference_text = reference_content.decode("utf-8")
-        
-        # Create validation input
-        validation_input = ValidationInput(
-            input_document=input_text,
-            reference_document=reference_text,
-            instructions=instructions
-        )
-        
-        # Call the validate function
-        return await validate_documents(validation_input)
-        
-    except Exception as e:
-        return ValidationResult(
-            findings=[],
-            success=False,
-            message=f"Error processing files: {str(e)}"
-        )
-
-def load_local_file(file_path):
-    """Load a local file and return its content"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            return file.read()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load file {file_path}: {str(e)}")
-
-@app.post("/test-validation", response_model=ValidationResult)
-async def test_validation():
-    """Test validation using local sample files"""
-    try:
-        # Define file paths - sample_data is at the same level as backend folder
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level from backend/
-        sample_data_dir = os.path.join(base_dir, "sample_data")
-        
-        sow_path = os.path.join(sample_data_dir, "sow.txt")
-        guidelines_path = os.path.join(sample_data_dir, "compliance_guidelines.txt")
-        instructions_path = os.path.join(sample_data_dir, "instructions.txt")
-        
-        # Load the local files
-        input_document = load_local_file(sow_path)
-        reference_document = load_local_file(guidelines_path)
-        instructions = load_local_file(instructions_path)
-        
-        print(f"✅ Loaded test files:")
-        print(f"  - Input document: {len(input_document)} characters")
-        print(f"  - Reference document: {len(reference_document)} characters") 
-        print(f"  - Instructions: {len(instructions)} characters")
-        
-        # Create validation input
-        validation_input = ValidationInput(
-            input_document=input_document,
-            reference_document=reference_document,
-            instructions=instructions
-        )
-        
-        # Call the validate function
-        return await validate_documents(validation_input)
-        
-    except Exception as e:
-        return ValidationResult(
-            findings=[],
-            success=False,
-            message=f"Error in test validation: {str(e)}"
-        )
-
-@app.get("/test-files-info")
-async def test_files_info():
-    """Get information about the test files without running validation"""
-    try:
-        # sample_data is at the same level as backend folder
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level from backend/
-        sample_data_dir = os.path.join(base_dir, "sample_data")
-        
-        files_info = {}
-        
-        for filename in ["sow.txt", "compliance_guidelines.txt", "instructions.txt"]:
-            file_path = os.path.join(sample_data_dir, filename)
-            if os.path.exists(file_path):
-                content = load_local_file(file_path)
-                files_info[filename] = {
-                    "exists": True,
-                    "character_count": len(content),
-                    "token_count": count_tokens(content),
-                    "preview": content[:200] + "..." if len(content) > 200 else content
-                }
-            else:
-                files_info[filename] = {
-                    "exists": False,
-                    "error": f"File not found: {file_path}"
-                }
-        
-        return {
-            "sample_data_directory": sample_data_dir,
-            "files": files_info
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting test files info: {str(e)}")
 
 @app.get("/health")
 async def health_check():
