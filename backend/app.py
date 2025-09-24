@@ -510,64 +510,15 @@ def run_validation(input_markdown: str, reference_markdown: str, instructions: s
                 message=f"Input document + overhead ({total_overhead} tokens) is too large. "
                         f"Available tokens for reference: {available_tokens}"
             )
-        
-        # Split reference document into chunks
-        reference_chunks = chunk_document(reference_document, available_tokens)
-        print(f"Split reference document into {len(reference_chunks)} chunks")
-        
-        # Collect all LLM responses and track any errors
-        all_responses = []
-        errors = []
-        
-        # Process each reference chunk
+
+        reference_chunks = chunk_document(reference_markdown, available_tokens)
+        sections = []
         for i, chunk in enumerate(reference_chunks):
-            print(f"\nProcessing reference chunk {i+1}/{len(reference_chunks)}...")
-            
-            # Validate against current chunk
-            result = validate_document_chunk(instructions, input_document, chunk)
+            result = validate_document_chunk(instructions, input_markdown, chunk)
+            if result and result.strip():
+                sections.append(f"### Analysis of Reference Section {i+1}\n\n{result}")
 
-            normalized_result = result.strip() if isinstance(result, str) else ""
-
-            if not normalized_result:
-                error_message = f"No response received for reference section {i+1}."
-                errors.append(error_message)
-                print(f"⚠️ {error_message}")
-                continue
-
-            if normalized_result.startswith("Error:"):
-                error_message = f"Reference section {i+1} returned an error from the language model: {normalized_result}"
-                errors.append(error_message)
-                print(f"⚠️ {error_message}")
-                continue
-
-            if normalized_result.lower() == "no response from model":
-                error_message = f"No response from model for reference section {i+1}."
-                errors.append(error_message)
-                print(f"⚠️ {error_message}")
-                continue
-
-            all_responses.append(f"## Analysis of Reference Section {i+1}\n\n{result}")
-
-            print(f"Validation complete for chunk {i+1}")
-
-        if errors:
-            combined_output = "\n\n---\n\n".join(all_responses) if all_responses else ""
-            error_section = "\n".join(f"- {msg}" for msg in errors)
-
-            if combined_output:
-                combined_output = f"{combined_output}\n\n---\n\n## Errors\n\n{error_section}"
-            else:
-                combined_output = f"## Errors\n\n{error_section}"
-
-            return ValidationResult(
-                success=False,
-                message=f"Validation failed: encountered {len(errors)} error(s) while analyzing the reference document.",
-                raw_output=combined_output
-            )
-
-        # Combine all responses into a single markdown document
-        if all_responses:
-            combined_output = "\n\n---\n\n".join(all_responses)
+        if sections:
             return ValidationResult(
                 success=True,
                 message=f"Validation complete. Analyzed {len(reference_chunks)} reference document sections.",
