@@ -1,0 +1,3 @@
+# AGENTS.md - user instructions
+
+The most important thing is to always try to fit as much code into your context window as possible. ALWAYS make sure you have the files in your context. ALWAYS read full files and not snippets. Use tools to bring as many files as possible into your context window. 
