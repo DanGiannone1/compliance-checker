@@ -4,11 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { Upload, File, Play, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-// Simplified type definitions
+// Types
 interface ValidationResult {
   success: boolean;
   message: string;
-  raw_output?: string; // Add this for the raw LLM output
+  raw_output?: string;
 }
 
 interface UploadResponse {
@@ -52,7 +52,6 @@ const DocumentValidator: React.FC = () => {
 
   const generateFileId = () => Math.random().toString(36).substr(2, 9);
 
-  // Load existing files on component mount
   useEffect(() => {
     loadExistingFiles();
   }, []);
@@ -62,7 +61,7 @@ const DocumentValidator: React.FC = () => {
       const response = await fetch(`${API_BASE_URL}/files/all`);
       if (response.ok) {
         const data = await response.json();
-        
+
         const convertToFileWithStatus = (fileInfo: FileInfo): FileWithStatus => ({
           status: 'completed' as const,
           id: generateFileId(),
@@ -74,15 +73,20 @@ const DocumentValidator: React.FC = () => {
         });
 
         if (data.input_files && data.input_files.length > 0) {
-          const inputFile = convertToFileWithStatus(data.input_files[0]);
-          setInputFile(inputFile);
+          // Show the most recent input first
+          const latest = [...data.input_files].sort((a: FileInfo, b: FileInfo) =>
+            (new Date(a.upload_date).getTime()) - (new Date(b.upload_date).getTime())
+          ).slice(-1)[0];
+          setInputFile(convertToFileWithStatus(latest));
+        } else {
+          setInputFile(null);
         }
 
         if (data.reference_files && data.reference_files.length > 0) {
-          const refFiles = data.reference_files.map((fileInfo: FileInfo) => 
-            convertToFileWithStatus(fileInfo)
-          );
-          setReferenceFiles(refFiles);
+          const refs = data.reference_files.map((fi: FileInfo) => convertToFileWithStatus(fi));
+          setReferenceFiles(refs);
+        } else {
+          setReferenceFiles([]);
         }
       }
     } catch (error) {
@@ -115,7 +119,7 @@ const DocumentValidator: React.FC = () => {
       formData.append('file', file);
 
       const endpoint = type === 'input' ? '/upload/input' : '/upload/reference';
-      
+
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         body: formData,
@@ -139,7 +143,7 @@ const DocumentValidator: React.FC = () => {
             file_size: uploadResponse.file_size
           } : prev);
         } else if (type === 'reference') {
-          setReferenceFiles(prev => 
+          setReferenceFiles(prev =>
             prev.map(f => f.id === fileId ? {
               ...f,
               status: 'completed',
@@ -156,7 +160,7 @@ const DocumentValidator: React.FC = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       console.error(`❌ Upload error for ${file.name}:`, error);
-      
+
       if (type === 'input') {
         setInputFile(prev => prev && prev.id === fileId ? {
           ...prev,
@@ -164,7 +168,7 @@ const DocumentValidator: React.FC = () => {
           error_message: errorMessage
         } : prev);
       } else if (type === 'reference') {
-        setReferenceFiles(prev => 
+        setReferenceFiles(prev =>
           prev.map(f => f.id === fileId ? {
             ...f,
             status: 'error',
@@ -178,7 +182,7 @@ const DocumentValidator: React.FC = () => {
   const removeFile = async (type: string, id: string): Promise<void> => {
     try {
       let fileToRemove: FileWithStatus | null | undefined;
-      
+
       if (type === 'input') {
         fileToRemove = inputFile;
       } else if (type === 'reference') {
@@ -188,7 +192,7 @@ const DocumentValidator: React.FC = () => {
       if (type === 'input' && inputFile) {
         setInputFile(prev => prev ? { ...prev, status: 'removing' } : prev);
       } else if (type === 'reference') {
-        setReferenceFiles(prev => 
+        setReferenceFiles(prev =>
           prev.map(f => f.id === id ? { ...f, status: 'removing' } : f)
         );
       }
@@ -211,49 +215,37 @@ const DocumentValidator: React.FC = () => {
       }
     } catch (error) {
       console.error('Error removing file:', error);
-      
+
       if (type === 'input' && inputFile) {
         setInputFile(prev => prev ? { ...prev, status: 'completed', error_message: 'Failed to remove file' } : prev);
       } else if (type === 'reference') {
-        setReferenceFiles(prev => 
+        setReferenceFiles(prev =>
           prev.map(f => f.id === id ? { ...f, status: 'error', error_message: 'Failed to remove file' } : f)
         );
       }
-      
+
       setError(error instanceof Error ? error.message : 'Failed to remove file');
     }
   };
 
   const runValidation = async (): Promise<void> => {
-    if (!inputFile || inputFile.status !== 'completed' || !inputFile.file_path) {
-      setError('Please upload an input document');
-      return;
-    }
-
-    const completedReferenceFiles = referenceFiles.filter(f => f.status === 'completed' && f.file_path);
-    if (completedReferenceFiles.length === 0) {
-      setError('Please upload at least one reference document');
-      return;
-    }
-
     setIsRunning(true);
     setError(null);
     setResults(null);
 
     try {
+      // Backend auto-discovers latest input + all references; we only pass optional instructions
       const formData = new FormData();
-      formData.append('input_file_path', inputFile.file_path);
-      formData.append('reference_file_path', completedReferenceFiles[0].file_path!);
       formData.append('instructions', instructions);
 
-      const response = await fetch(`${API_BASE_URL}/validate-uploaded`, {
+      const response = await fetch(`${API_BASE_URL}/validate`, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Validation failed' }));
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData.detail?.message || errorData.detail || `HTTP error! status: ${response.status}`);
       }
 
       const data: ValidationResult = await response.json();
@@ -314,7 +306,7 @@ const DocumentValidator: React.FC = () => {
             id={`file-${type}`}
             type="file"
             className="hidden"
-            accept=".txt,.pdf,.doc,.docx"
+            accept=".pdf,application/pdf"
             multiple={multiple}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               const selectedFiles = Array.from(e.target.files || []);
@@ -324,7 +316,7 @@ const DocumentValidator: React.FC = () => {
           />
         </div>
       </div>
-      
+
       {files.length > 0 && (
         <div className="mt-4 space-y-2">
           {files.map((fileWithStatus) => (
@@ -353,18 +345,13 @@ const DocumentValidator: React.FC = () => {
     </div>
   );
 
-  const hasCompletedInputFile = inputFile?.status === 'completed' && inputFile.file_path;
-  const completedReferenceFiles = referenceFiles.filter(f => f.status === 'completed' && f.file_path);
-  const hasCompletedReferenceFiles = completedReferenceFiles.length > 0;
-  const canRunValidation = hasCompletedInputFile && hasCompletedReferenceFiles;
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Document Validator</h1>
-          <p className="text-gray-600">Upload documents and validate them against reference materials</p>
+          <p className="text-gray-600">Upload PDFs. Click validate. Backend auto-selects latest input & all references.</p>
         </div>
 
         {/* File Upload Sections */}
@@ -385,7 +372,7 @@ const DocumentValidator: React.FC = () => {
           />
         </div>
 
-        {/* Instructions Section */}
+        {/* Instructions Section (optional) */}
         <div className="mb-6">
           <div className="bg-white rounded-lg p-4 border border-gray-200">
             <label htmlFor="instructions" className="block text-sm font-medium text-gray-700 mb-2">
@@ -406,7 +393,7 @@ const DocumentValidator: React.FC = () => {
         <div className="mb-6 text-center">
           <button
             onClick={runValidation}
-            disabled={isRunning || !canRunValidation}
+            disabled={isRunning}
             className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isRunning ? (
@@ -417,15 +404,10 @@ const DocumentValidator: React.FC = () => {
             ) : (
               <>
                 <Play className="-ml-1 mr-3 h-5 w-5" />
-                Run Validation
+                Validate
               </>
             )}
           </button>
-          {!canRunValidation && (
-            <p className="mt-2 text-sm text-gray-500">
-              Upload both input and reference documents to continue
-            </p>
-          )}
         </div>
 
         {/* Error Display */}
@@ -441,19 +423,18 @@ const DocumentValidator: React.FC = () => {
           </div>
         )}
 
-        {/* Results Display - Simplified */}
+        {/* Results Display */}
         {results && (
           <div className="bg-white rounded-lg p-6 border border-gray-200">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Validation Results</h2>
-            
+
             {results.success ? (
               <div>
                 <div className="flex items-center text-green-600 bg-green-50 p-3 rounded-md border border-green-200 mb-4">
                   <CheckCircle className="h-5 w-5 mr-2" />
                   <span className="font-medium">{results.message}</span>
                 </div>
-                
-                {/* Simple markdown output */}
+
                 {results.raw_output && (
                   <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900">
                     <ReactMarkdown
